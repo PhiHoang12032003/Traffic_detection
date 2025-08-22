@@ -1,5 +1,6 @@
 # Traffic Red Light Running Violation Detection System Requirements
 # Usage: pip install -r requirements.txt
+# Note: MySQL dependencies are commented out for easier setup
 
 # Base ----------------------------------------
 matplotlib>=3.2.2
@@ -25,12 +26,12 @@ paddleocr>=2.6.0
 # Flask and Web Framework ---------------------
 Flask>=2.3.3
 flask-cors>=4.0.0
-Flask-MySQLdb>=1.0.1
 werkzeug>=2.3.7
 
-# Database ------------------------------------
-mysqlclient>=2.2.0
-PyMySQL>=1.0.0
+# Database (commented out for easier setup) --
+# Flask-MySQLdb>=1.0.1
+# mysqlclient>=2.2.0
+# PyMySQL>=1.0.0
 
 # Data Analysis and Plotting ------------------
 pandas>=1.1.4
@@ -44,6 +45,9 @@ reportlab>=4.0.4
 
 # System Utilities ----------------------------
 psutil
+
+# Date and Time handling ----------------------
+python-dateutil>=2.8.0
 
 # Async Processing ----------------------------
 aiofiles>=0.8.0

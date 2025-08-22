@@ -8,7 +8,7 @@ from ultralytics import YOLO
 from flask import Flask, jsonify, url_for, request, session, send_file
 from flask import render_template, Response
 from flask_cors import CORS
-from flask_mysqldb import MySQL
+# from flask_mysqldb import MySQL  # Commented out for easier setup
 # from testHelmetNew import video_detect_helmet_with_plate, get_processing_progress, reset_processing_progress
 from processHelmetVideo import process_helmet_video_complete
 import threading
@@ -34,11 +34,12 @@ app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-app.config['MYSQL_HOST'] = 'localhost'
-app.config['MYSQL_USER'] = 'root'
-app.config['MYSQL_PASSWORD'] = '12345678'
-app.config['MYSQL_DB'] = 'datn'
-mysql = MySQL(app)
+# MySQL Configuration - Commented out for easier setup
+# app.config['MYSQL_HOST'] = 'localhost'
+# app.config['MYSQL_USER'] = 'root'
+# app.config['MYSQL_PASSWORD'] = '12345678'
+# app.config['MYSQL_DB'] = 'datn'
+# mysql = MySQL(app)
 
 
 # Apply Flask CORSx`
@@ -47,57 +48,66 @@ mysql = MySQL(app)
 #
 @app.route('/test', methods=['GET'])
 def get_violate():
-    try:
-        cur = mysql.connection.cursor()
-        cur.execute(
-            "SELECT nametransportation.vh_name, MAX(transportationviolation.date_violate) as date_violate, COUNT(*) AS total_violate FROM transportationviolation INNER JOIN nametransportation ON transportationviolation.id_name = nametransportation.id_name GROUP BY nametransportation.id_name, nametransportation.vh_name;")
-        users = cur.fetchall()
-        cur.close()
-        return jsonify(users)
-    except Exception as e:
-        # Fallback data when database is not available
-        print(f"Database error: {e}")
-        sample_data = [
-            ["OTO", "2024-01-15", 12],
-            ["Xe May", "2024-01-15", 25], 
-            ["Xe Dap", "2024-01-15", 3],
-            ["Xe Tai", "2024-01-15", 8],
-            ["Xe Bus", "2024-01-15", 2]
-        ]
-        return jsonify(sample_data)
+    # MySQL functionality disabled for easier setup
+    # try:
+    #     cur = mysql.connection.cursor()
+    #     cur.execute(
+    #         "SELECT nametransportation.vh_name, MAX(transportationviolation.date_violate) as date_violate, COUNT(*) AS total_violate FROM transportationviolation INNER JOIN nametransportation ON transportationviolation.id_name = nametransportation.id_name GROUP BY nametransportation.id_name, nametransportation.vh_name;")
+    #     users = cur.fetchall()
+    #     cur.close()
+    #     return jsonify(users)
+    # except Exception as e:
+    #     # Fallback data when database is not available
+    #     print(f"Database error: {e}")
+    sample_data = [
+        ["OTO", "2024-01-15", 12],
+        ["Xe May", "2024-01-15", 25], 
+        ["Xe Dap", "2024-01-15", 3],
+        ["Xe Tai", "2024-01-15", 8],
+        ["Xe Bus", "2024-01-15", 2]
+    ]
+    return jsonify(sample_data)
 
 
 @app.route('/test1', methods=['GET'])
 def get_violate_current():
-    try:
-        cur = mysql.connection.cursor()
-        cur.execute(
-            "SELECT nametransportation.vh_name, MAX(transportationviolation.date_violate) as date_violate, COUNT(*) AS total_violate FROM transportationviolation INNER JOIN nametransportation ON transportationviolation.id_name = nametransportation.id_name WHERE transportationviolation.date_violate = curdate() GROUP BY nametransportation.id_name, nametransportation.vh_name;")
-        users = cur.fetchall()
-        cur.close()
-        return jsonify(users)
-    except Exception as e:
-        # Fallback data for current day when database is not available
-        print(f"Database error: {e}")
-        sample_data = [
-            ["OTO", "2024-01-15", 3],
-            ["Xe May", "2024-01-15", 7], 
-            ["Xe Tai", "2024-01-15", 2],
-            ["Xe Bus", "2024-01-15", 1]
-        ]
-        return jsonify(sample_data)
+    # MySQL functionality disabled for easier setup
+    # try:
+    #     cur = mysql.connection.cursor()
+    #     cur.execute(
+    #         "SELECT nametransportation.vh_name, MAX(transportationviolation.date_violate) as date_violate, COUNT(*) AS total_violate FROM transportationviolation INNER JOIN nametransportation ON transportationviolation.id_name = nametransportation.id_name WHERE transportationviolation.date_violate = curdate() GROUP BY nametransportation.id_name, nametransportation.vh_name;")
+    #     users = cur.fetchall()
+    #     cur.close()
+    #     return jsonify(users)
+    # except Exception as e:
+    #     # Fallback data for current day when database is not available
+    #     print(f"Database error: {e}")
+    sample_data = [
+        ["OTO", "2024-01-15", 3],
+        ["Xe May", "2024-01-15", 7], 
+        ["Xe Tai", "2024-01-15", 2],
+        ["Xe Bus", "2024-01-15", 1]
+    ]
+    return jsonify(sample_data)
 
 
+# MySQL database insert function - Disabled for easier setup
 # @app.route('/create', methods=['GET'])
 def create(cls):
-    with app.app_context():
-        cur = mysql.connection.cursor()
-        ngay_hien_tai = datetime.date.today()
-        cur.execute("insert into transportationviolation(id_name , date_violate) values (%s, %s)",
-                    (cls + 1, ngay_hien_tai))
-        mysql.connection.commit()
-        cur.close()
-        return jsonify({'message': 'User created successfully'})
+    # MySQL functionality disabled
+    # with app.app_context():
+    #     cur = mysql.connection.cursor()
+    #     ngay_hien_tai = datetime.date.today()
+    #     cur.execute("insert into transportationviolation(id_name , date_violate) values (%s, %s)",
+    #                 (cls + 1, ngay_hien_tai))
+    #     mysql.connection.commit()
+    #     cur.close()
+    #     return jsonify({'message': 'User created successfully'})
+    
+    # Simple logging instead of database insert
+    ngay_hien_tai = datetime.date.today()
+    print(f"Violation detected: Class {cls + 1} on {ngay_hien_tai}")
+    return None
 
 
 def call_route(cls):
@@ -244,7 +254,7 @@ def video_detection(path_x=""):
                                     # Tạo tệp tạm thời và lưu ảnh PIL vào đó
                                     temp_image = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
                                     frame_pil.save(temp_image.name)
-                                    create(box.cls[0])
+                                    create(box.cls[0])  # Log violation (MySQL disabled)
                                     createBB.bienBanNopPhat(examBB,
                                                             temp_image.name,
                                                             "data_xe_may_vi_pham/" + str(
@@ -284,7 +294,7 @@ def video_detection(path_x=""):
                                     # Tạo tệp tạm thời và lưu ảnh PIL vào đó
                                     temp_image = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
                                     frame_pil.save(temp_image.name)
-                                    create(box.cls[0])
+                                    create(box.cls[0])  # Log violation (MySQL disabled)
                                     createBB.bienBanNopPhat(examBB,
                                                             temp_image.name,
                                                             "data_oto_vi_pham/" + str(
