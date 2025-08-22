@@ -1,0 +1,54 @@
+{
+  "total_violations": 73,
+  "vehicle_types": {
+    "car": 60,
+    "motorcycle": 13
+  },
+  "detected_plates": [
+    {
+      "plate": "KW527",
+      "vehicle_type": "car",
+      "timestamp": "20250821_171145",
+      "image_path": "data_vuot_den_do/violation_20250821_171145_1.jpg"
+    },
+    {
+      "plate": "KW527",
+      "vehicle_type": "car",
+      "timestamp": "20250821_171148",
+      "image_path": "data_vuot_den_do/violation_20250821_171148_3.jpg"
+    },
+    {
+      "plate": "KW527",
+      "vehicle_type": "car",
+      "timestamp": "20250821_171150",
+      "image_path": "data_vuot_den_do/violation_20250821_171150_4.jpg"
+    },
+    {
+      "plate": "KW527",
+      "vehicle_type": "car",
+      "timestamp": "20250821_171153",
+      "image_path": "data_vuot_den_do/violation_20250821_171153_5.jpg"
+    },
+    {
+      "plate": "KW527",
+      "vehicle_type": "car",
+      "timestamp": "20250821_171156",
+      "image_path": "data_vuot_den_do/violation_20250821_171156_6.jpg"
+    },
+    {
+      "plate": "IZI2",
+      "vehicle_type": "car",
+      "timestamp": "20250821_171256",
+      "image_path": "data_vuot_den_do/violation_20250821_171256_29.jpg"
+    },
+    {
+      "plate": "NN773",
+      "vehicle_type": "car",
+      "timestamp": "20250821_171434",
+      "image_path": "data_vuot_den_do/violation_20250821_171434_35.jpg"
+    }
+  ],
+  "processing_time": 534.6201958656311,
+  "total_frames": 715,
+  "detection_method": "Advanced"
+}

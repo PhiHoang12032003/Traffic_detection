@@ -8,23 +8,12 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
-develop-eggs/
+
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
+
 parts/
 sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+
 MANIFEST
 
 # PyInstaller
@@ -84,12 +73,6 @@ ipython_config.py
 # pyenv
 .python-version
 
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
 
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow
 __pypackages__/
@@ -134,57 +117,13 @@ wandb/
 tensorboard_logs/
 lightning_logs/
 
-# Data directories (keep structure but ignore content)
-data/
+
 dataset/
 datasets/
 raw_data/
 processed_data/
 
-# Large files that shouldn't be in git
-*.mp4
-*.avi
-*.mov
-*.mkv
-*.wmv
-*.flv
-*.webm
-*.m4v
 
-# Images (except small icons/logos)
-*.jpg
-*.jpeg
-*.png
-*.gif
-*.bmp
-*.tiff
-*.tif
-*.svg
-*.webp
-*.ico
-
-# Exception: Keep small UI images
-!img/loader.gif
-!templates/static/icons/*.png
-!templates/static/icons/*.svg
-
-# PDFs (violation reports)
-*.pdf
-
-# Processed outputs
-processed_videos/
-outputs/
-results/
-temp/
-tmp/
-
-# Upload directories
-uploads/
-
-# Database files
-*.db
-*.sqlite
-*.sqlite3
 
 # Configuration files with sensitive data
 config.ini
