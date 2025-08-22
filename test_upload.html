@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Test Upload</title>
+  </head>
+  <body>
+    <h1>Test File Upload</h1>
+
+    <!-- Simple file input -->
+    <input type="file" id="fileInput1" accept="video/*" />
+    <br /><br />
+
+    <!-- Button trigger -->
+    <button onclick="document.getElementById('fileInput2').click()">
+      Click to choose file
+    </button>
+    <input type="file" id="fileInput2" accept="video/*" style="display: none" />
+    <br /><br />
+
+    <!-- jQuery version -->
+    <div
+      id="uploadBox"
+      style="border: 2px dashed red; padding: 20px; cursor: pointer"
+    >
+      Click this box to upload
+    </div>
+    <input type="file" id="fileInput3" accept="video/*" style="display: none" />
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script>
+      // Test 1: Direct file input
+      document.getElementById("fileInput1").onchange = function (e) {
+        console.log("File 1 selected:", e.target.files[0]);
+      };
+
+      // Test 2: Button trigger
+      document.getElementById("fileInput2").onchange = function (e) {
+        console.log("File 2 selected:", e.target.files[0]);
+      };
+
+      // Test 3: jQuery
+      $("#uploadBox").click(function () {
+        console.log("Upload box clicked");
+        $("#fileInput3").click();
+      });
+
+      $("#fileInput3").change(function (e) {
+        console.log("File 3 selected:", e.target.files[0]);
+      });
+
+      console.log("Page loaded, all file inputs:", {
+        input1: document.getElementById("fileInput1"),
+        input2: document.getElementById("fileInput2"),
+        input3: document.getElementById("fileInput3"),
+      });
+    </script>
+  </body>
+</html>
+
