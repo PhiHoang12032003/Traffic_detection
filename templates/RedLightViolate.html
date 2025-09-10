@@ -3,847 +3,1089 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hệ Thống Phát Hiện Vi Phạm Vượt Đèn Đỏ</title>
-    <link
-      rel="stylesheet"
-      href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/font-awesome.min.css"
-    />
+    <title>Giám Sát Vi Phạm Đèn Đỏ - Traffic AI Monitor</title>
+
     <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
       body {
-        background-color: #f4f4f4;
-        font-family: "Arial", sans-serif;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        min-height: 100vh;
+        color: #333;
       }
 
       .header {
-        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-        color: white;
+        background: rgba(255, 255, 255, 0.95);
         padding: 20px 0;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        position: fixed;
+        width: 100%;
+        top: 0;
+        z-index: 1000;
+      }
+
+      .header-content {
+        max-width: 1400px;
+        margin: 0 auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 20px;
+      }
+
+      .logo {
+        font-size: 24px;
+        font-weight: bold;
+        color: #ef4444;
+        display: flex;
+        align-items: center;
+      }
+
+      .logo i {
+        margin-right: 10px;
+        font-size: 28px;
+      }
+
+      .nav-menu {
+        display: flex;
+        list-style: none;
+        gap: 20px;
+      }
+
+      .nav-menu a {
+        text-decoration: none;
+        color: #333;
+        font-weight: 500;
+        padding: 8px 16px;
+        border-radius: 20px;
+        transition: all 0.3s ease;
+      }
+
+      .nav-menu a:hover {
+        background: #ef4444;
+        color: white;
+      }
+
+      .main-content {
+        margin-top: 80px;
+        padding: 30px 20px;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+
+      .page-header {
+        background: white;
+        padding: 30px;
+        border-radius: 20px;
+        margin-bottom: 30px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .page-title {
+        font-size: 32px;
+        color: #333;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+      }
+
+      .page-title i {
+        margin-right: 15px;
+        color: #ef4444;
+      }
+
+      .page-subtitle {
+        color: #666;
+        font-size: 16px;
+      }
+
+      .content-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 30px;
+      }
+
+      .video-section {
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
       }
 
       .video-container {
-        background: white;
-        border-radius: 10px;
-        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
-        padding: 20px;
-        margin: 20px 0;
-      }
-
-      .video-frame {
         position: relative;
-        width: 100%;
-        background-color: #000;
-        border-radius: 8px;
+        background: #000;
+        border-radius: 15px;
         overflow: hidden;
-      }
-
-      .video-frame img {
-        width: 100%;
-        height: auto;
-        display: block;
-      }
-
-      .upload-section {
-        background: white;
-        border-radius: 10px;
-        box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
-        padding: 30px;
-        margin: 20px 0;
-      }
-
-      .upload-box {
-        border: 2px dashed #dc3545;
-        border-radius: 10px;
-        padding: 40px;
-        text-align: center;
-        background: #fafafa;
-        cursor: pointer;
-        transition: all 0.3s;
-      }
-
-      .upload-box:hover {
-        background: #f0f0f0;
-        border-color: #c82333;
-      }
-
-      .upload-box.dragover {
-        background: #ffe6e6;
-        border-color: #c82333;
-      }
-
-      .file-input {
-        position: absolute;
-        opacity: 0;
-        width: 0;
-        height: 0;
-        overflow: hidden;
-      }
-
-      .upload-icon {
-        font-size: 60px;
-        color: #dc3545;
         margin-bottom: 20px;
       }
 
-      .upload-text {
+      .video-stream {
+        width: 100%;
+        height: 500px;
+        object-fit: cover;
+      }
+
+      .video-placeholder {
+        width: 100%;
+        height: 500px;
+        background: linear-gradient(45deg, #f0f0f0, #e0e0e0);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
         color: #666;
-        font-size: 18px;
-        margin-bottom: 10px;
       }
 
-      .upload-hint {
-        color: #999;
-        font-size: 14px;
+      .video-placeholder i {
+        font-size: 64px;
+        margin-bottom: 20px;
+        opacity: 0.5;
       }
 
-      .btn-analyze {
-        background: #dc3545;
+      .video-controls {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+
+      .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 25px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-primary {
+        background: #ef4444;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #dc2626;
+        transform: translateY(-2px);
+      }
+
+      .btn-warning {
+        background: #f59e0b;
         color: white;
         border: none;
-        padding: 12px 30px;
-        border-radius: 5px;
-        font-size: 16px;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-warning:hover {
+        background: #d97706;
+        transform: translateY(-2px);
+      }
+
+      .btn-warning:disabled {
+        background: #9ca3af;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .download-section {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
         margin-top: 20px;
-        transition: all 0.3s;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .download-section h4 {
+        color: #1f2937;
+        margin-bottom: 15px;
+        font-size: 18px;
+      }
+
+      .download-buttons {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+      }
+
+      .download-buttons .btn {
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-success {
+        background: #10b981;
+        color: white;
+      }
+
+      .btn-success:hover {
+        background: #059669;
+        transform: translateY(-2px);
+      }
+
+      .btn-danger {
+        background: #ef4444;
+        color: white;
+      }
+
+      .btn-danger:hover {
+        background: #dc2626;
+        transform: translateY(-2px);
+      }
+
+      .btn-secondary {
+        background: #6b7280;
+        color: white;
+      }
+
+      .btn-secondary:hover {
+        background: #4b5563;
+        transform: translateY(-2px);
+      }
+
+      .upload-section {
+        background: #fef2f2;
+        border: 2px dashed #fca5a5;
+        border-radius: 15px;
+        padding: 30px;
+        text-align: center;
+        margin-bottom: 20px;
+        transition: all 0.3s ease;
+      }
+
+      .upload-section:hover {
+        border-color: #ef4444;
+        background: #fef7f7;
+      }
+
+      .upload-section.dragover {
+        border-color: #ef4444;
+        background: #fee2e2;
+      }
+
+      .upload-icon {
+        font-size: 48px;
+        color: #fca5a5;
+        margin-bottom: 15px;
+      }
+
+      .upload-text {
+        color: #64748b;
+        margin-bottom: 20px;
+      }
+
+      .file-input {
         display: none;
       }
 
-      .btn-analyze:hover {
-        background: #c82333;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      .traffic-light-display {
+        background: #1f2937;
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+
+      .traffic-light {
+        width: 80px;
+        height: 200px;
+        background: #374151;
+        border-radius: 40px;
+        margin: 0 auto 15px;
+        position: relative;
+        border: 3px solid #4b5563;
+      }
+
+      .light {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 2px solid #6b7280;
+      }
+
+      .light.red {
+        top: 20px;
+        background: #374151;
+      }
+
+      .light.red.active {
+        background: #ef4444;
+        box-shadow: 0 0 20px #ef4444;
+      }
+
+      .light.yellow {
+        top: 75px;
+        background: #374151;
+      }
+
+      .light.yellow.active {
+        background: #f59e0b;
+        box-shadow: 0 0 20px #f59e0b;
+      }
+
+      .light.green {
+        top: 130px;
+        background: #374151;
+      }
+
+      .light.green.active {
+        background: #10b981;
+        box-shadow: 0 0 20px #10b981;
+      }
+
+      .light-status {
+        color: white;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
       }
 
       .stats-card {
         background: white;
-        border-radius: 10px;
-        padding: 20px;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        text-align: center;
+        border-radius: 20px;
+        padding: 25px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .stats-title {
+        font-size: 20px;
+        font-weight: 600;
         margin-bottom: 20px;
-      }
-
-      .stats-icon {
-        font-size: 40px;
-        margin-bottom: 10px;
-      }
-
-      .stats-value {
-        font-size: 32px;
-        font-weight: bold;
         color: #333;
       }
 
-      .stats-label {
-        color: #666;
+      .stat-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px 0;
+        border-bottom: 1px solid #f1f5f9;
+      }
+
+      .stat-item:last-child {
+        border-bottom: none;
+      }
+
+      .stat-label {
+        color: #64748b;
+        font-weight: 500;
+      }
+
+      .stat-value {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+      }
+
+      .stat-value.primary {
+        color: #ef4444;
+      }
+      .stat-value.success {
+        color: #10b981;
+      }
+      .stat-value.warning {
+        color: #f59e0b;
+      }
+      .stat-value.danger {
+        color: #ef4444;
+      }
+
+      .violations-list {
+        background: white;
+        border-radius: 20px;
+        padding: 25px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .violations-title {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        color: #333;
+      }
+
+      .violation-item {
+        display: flex;
+        align-items: center;
+        padding: 15px;
+        background: #fef2f2;
+        border-radius: 10px;
+        margin-bottom: 10px;
+        border-left: 4px solid #ef4444;
+      }
+
+      .violation-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #fee2e2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 15px;
+        color: #ef4444;
+      }
+
+      .violation-info {
+        flex: 1;
+      }
+
+      .violation-type {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 5px;
+      }
+
+      .violation-time {
         font-size: 14px;
+        color: #64748b;
       }
 
-      .violation-alert {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: #dc3545;
-        color: white;
-        padding: 15px 25px;
-        border-radius: 5px;
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        display: none;
-        animation: slideIn 0.3s;
+      .license-plate {
+        font-family: "Courier New", monospace;
+        font-weight: bold;
+        color: #ef4444;
+        background: #fee2e2;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 12px;
       }
 
-      @keyframes slideIn {
-        from {
-          transform: translateX(100%);
-          opacity: 0;
+      .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #ef4444;
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0% {
+          opacity: 1;
         }
-        to {
-          transform: translateX(0);
+        50% {
+          opacity: 0.5;
+        }
+        100% {
           opacity: 1;
         }
       }
 
-      .traffic-light-status {
-        display: inline-block;
-        padding: 10px 20px;
-        border-radius: 5px;
-        font-weight: bold;
-        margin: 10px 0;
-      }
-
-      .light-red {
-        background: #dc3545;
-        color: white;
-      }
-
-      .light-green {
-        background: #28a745;
-        color: white;
-      }
-
-      .light-yellow {
-        background: #ffc107;
-        color: #333;
-      }
-
-      .progress-section {
+      .alert {
+        padding: 15px 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
         display: none;
-        margin: 20px 0;
       }
 
-      .nav-buttons {
-        margin: 20px 0;
+      .alert-success {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #a7f3d0;
+      }
+
+      .alert-error {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+      }
+
+      .alert-info {
+        background: #dbeafe;
+        color: #1e40af;
+        border: 1px solid #93c5fd;
       }
     </style>
+
+    <!-- Font Awesome -->
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <!-- Header -->
-    <div class="header">
-      <div class="container">
-        <h1 class="text-center">
+    <header class="header">
+      <div class="header-content">
+        <div class="logo">
           <i class="fas fa-traffic-light"></i>
-          Hệ Thống Phát Hiện Vi Phạm Vượt Đèn Đỏ
-        </h1>
-        <p class="text-center mb-0">
-          Sử dụng AI để phát hiện và ghi nhận vi phạm giao thông
-        </p>
+          Giám Sát Đèn Đỏ
+        </div>
+        <nav>
+          <ul class="nav-menu">
+            <li><a href="/">Trang Chủ</a></li>
+            <li><a href="/Hethongcamera1">Làn Đường</a></li>
+            <li><a href="/Hethongcamera2">Mũ Bảo Hiểm</a></li>
+            <li><a href="/Hethongcamera3">Đèn Đỏ</a></li>
+            <li><a href="/thongke">Thống Kê</a></li>
+          </ul>
+        </nav>
       </div>
-    </div>
+    </header>
 
-    <!-- Navigation -->
-    <div class="container nav-buttons">
-      <a href="/" class="btn btn-secondary">
-        <i class="fas fa-home"></i> Trang Chủ
-      </a>
-      <a href="/Hethongcamera1" class="btn btn-secondary">
-        <i class="fas fa-road"></i> Vi Phạm Làn Đường
-      </a>
-      <a href="/Hethongcamera2" class="btn btn-secondary">
-        <i class="fas fa-hard-hat"></i> Vi Phạm Mũ Bảo Hiểm
-      </a>
-    </div>
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="container">
+        <!-- Page Header -->
+        <div class="page-header">
+          <h1 class="page-title">
+            <i class="fas fa-traffic-light"></i>
+            Giám Sát Vi Phạm Đèn Đỏ
+          </h1>
+          <p class="page-subtitle">
+            Phát hiện tự động vi phạm đèn đỏ với nhận diện biển số xe và công
+            nghệ AI tiên tiến
+          </p>
+        </div>
 
-    <div class="container">
-      <div class="row">
-        <!-- Upload Section -->
-        <div class="col-lg-12">
-          <div class="upload-section">
-            <h3 class="mb-4">
-              <i class="fas fa-upload"></i> Tải Video Lên Để Phân Tích
-            </h3>
-
-            <!-- Detection Method Selection -->
-            <div class="mb-4">
-              <h5><i class="fas fa-cogs"></i> Phương Pháp Phát Hiện</h5>
-              <div class="form-check form-check-inline">
-                <input
-                  class="form-check-input"
-                  type="radio"
-                  name="detectionMethod"
-                  id="basicMethod"
-                  value="original"
-                  checked
-                />
-                <label class="form-check-label" for="basicMethod">
-                  <i class="fas fa-eye"></i> Cơ Bản (Nhanh)
-                </label>
-              </div>
-              <div class="form-check form-check-inline">
-                <input
-                  class="form-check-input"
-                  type="radio"
-                  name="detectionMethod"
-                  id="advancedMethod"
-                  value="advanced"
-                />
-                <label class="form-check-label" for="advancedMethod">
-                  <i class="fas fa-brain"></i> Nâng Cao (AI + Biển Số)
-                </label>
-              </div>
-              <small class="form-text text-muted">
-                Phương pháp nâng cao sử dụng YOLO + nhận diện biển số xe vi phạm
-              </small>
-            </div>
-
-            <div class="upload-box" id="uploadBox">
+        <!-- Content Grid -->
+        <div class="content-grid">
+          <!-- Video Section -->
+          <div class="video-section">
+            <!-- Upload Section -->
+            <div class="upload-section" id="uploadSection">
               <div class="upload-icon">
                 <i class="fas fa-cloud-upload-alt"></i>
               </div>
               <div class="upload-text">
-                Kéo thả video vào đây hoặc click để chọn file
-              </div>
-              <div class="upload-hint">
-                Hỗ trợ: MP4, AVI, MOV, MKV (Tối đa 500MB)
+                <strong>Kéo thả video vào đây</strong><br />
+                hoặc click để chọn file video
               </div>
               <input
                 type="file"
-                id="fileInput"
+                id="videoInput"
                 class="file-input"
-                accept=".mp4,.avi,.mov,.mkv,.webm,video/*"
+                accept="video/*"
               />
-            </div>
-
-            <!-- Alternative upload button -->
-            <div class="text-center mt-3">
-              <button
-                type="button"
-                class="btn btn-outline-danger"
-                id="uploadBtnAlt"
-              >
-                <i class="fas fa-folder-open"></i> Chọn Video
-              </button>
-            </div>
-
-            <!-- Debug: Visible file input -->
-            <div class="mt-3 p-3 bg-warning">
-              <p><strong>Debug Mode:</strong> File input hiển thị để test</p>
-              <input type="file" id="debugFileInput" accept="video/*" />
-            </div>
-
-            <div id="fileInfo" style="display: none" class="mt-3">
-              <div class="alert alert-info">
-                <i class="fas fa-file-video"></i>
-                File đã chọn: <span id="fileName"></span>
-                <button
-                  class="btn btn-sm btn-danger float-right"
-                  id="clearFile"
-                >
-                  <i class="fas fa-times"></i> Xóa
-                </button>
-              </div>
-            </div>
-
-            <div class="progress-section" id="progressSection">
-              <div class="progress">
-                <div
-                  class="progress-bar progress-bar-striped progress-bar-animated"
-                  id="uploadProgress"
-                  role="progressbar"
-                  style="width: 0%"
-                >
-                  0%
-                </div>
-              </div>
-            </div>
-
-            <div class="text-center">
               <button
                 class="btn btn-primary"
-                id="processBtn"
-                style="display: none"
+                onclick="document.getElementById('videoInput').click()"
               >
-                <i class="fas fa-cog"></i> Xử Lý và Xuất Video
+                <i class="fas fa-folder-open"></i>
+                Chọn Video
               </button>
             </div>
 
-            <!-- Processing Status -->
-            <div id="processingStatus" style="display: none" class="mt-3">
-              <div class="alert alert-info">
-                <div class="d-flex align-items-center">
+            <!-- Traffic Light Display -->
+            <div class="traffic-light-display">
+              <div class="traffic-light">
+                <div class="light red active" id="redLight"></div>
+                <div class="light yellow" id="yellowLight"></div>
+                <div class="light green" id="greenLight"></div>
+              </div>
+              <div class="light-status" id="lightStatus">ĐÈN ĐỎ</div>
+            </div>
+
+            <!-- Alerts -->
+            <div class="alert alert-success" id="successAlert">
+              <i class="fas fa-check-circle"></i>
+              Video đã được tải lên thành công!
+            </div>
+            <div class="alert alert-error" id="errorAlert">
+              <i class="fas fa-exclamation-circle"></i>
+              <span id="errorMessage">Có lỗi xảy ra khi tải video!</span>
+            </div>
+            <div class="alert alert-info" id="infoAlert">
+              <i class="fas fa-info-circle"></i>
+              <span id="infoMessage">Đang xử lý video...</span>
+            </div>
+
+            <!-- Video Controls -->
+            <div class="video-controls">
+              <button
+                class="btn btn-success"
+                id="startBtn"
+                onclick="startDetection()"
+              >
+                <i class="fas fa-play"></i>
+                Bắt Đầu
+              </button>
+              <button
+                class="btn btn-warning"
+                id="processBtn"
+                onclick="processVideo()"
+                style="display: none;"
+              >
+                <i class="fas fa-cogs"></i>
+                Xuất Video Phân Tích
+              </button>
+              <button
+                class="btn btn-danger"
+                id="stopBtn"
+                onclick="stopDetection()"
+                disabled
+              >
+                <i class="fas fa-stop"></i>
+                Dừng
+              </button>
+              <button class="btn btn-secondary" onclick="clearVideo()">
+                <i class="fas fa-trash"></i>
+                Xóa Video
+              </button>
+            </div>
+
+            <!-- Video Container -->
+            <div class="video-container">
+              <img
+                id="videoStream"
+                class="video-stream"
+                style="display: none"
+                alt="Video Stream"
+              />
+              <div id="videoPlaceholder" class="video-placeholder">
+                <i class="fas fa-video"></i>
+                <h3>Chưa có video</h3>
+                <p>Vui lòng tải lên video để bắt đầu giám sát</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sidebar -->
+          <div class="sidebar">
+            <!-- Stats Card -->
+            <div class="stats-card">
+              <h3 class="stats-title">
+                <i class="fas fa-chart-bar"></i>
+                Thống Kê Thời Gian Thực
+              </h3>
+              <div class="stat-item">
+                <span class="stat-label">Trạng Thái</span>
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <span class="stat-value" id="status">Chờ</span>
                   <div
-                    class="spinner-border spinner-border-sm mr-3"
-                    role="status"
-                  >
-                    <span class="sr-only">Loading...</span>
-                  </div>
-                  <span id="processingMessage">Đang xử lý video...</span>
-                </div>
-                <div class="progress mt-2">
-                  <div
-                    class="progress-bar progress-bar-striped progress-bar-animated"
-                    role="progressbar"
-                    style="width: 100%"
+                    class="status-indicator"
+                    id="statusIndicator"
+                    style="display: none"
                   ></div>
                 </div>
               </div>
-            </div>
-
-            <!-- Download Section -->
-            <div id="downloadSection" style="display: none" class="mt-3">
-              <div class="alert alert-success">
-                <h5><i class="fas fa-check-circle"></i> Xử Lý Hoàn Thành!</h5>
-                <p id="processingStats"></p>
-                <button class="btn btn-success" id="downloadBtn">
-                  <i class="fas fa-download"></i> Tải Video Đã Xử Lý
-                </button>
-                <button class="btn btn-secondary ml-2" id="processNewBtn">
-                  <i class="fas fa-upload"></i> Xử Lý Video Khác
-                </button>
+              <div class="stat-item">
+                <span class="stat-label">Tổng Vi Phạm</span>
+                <span class="stat-value danger" id="totalViolations">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Xe Máy Vi Phạm</span>
+                <span class="stat-value warning" id="motorViolations">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Ô Tô Vi Phạm</span>
+                <span class="stat-value danger" id="carViolations">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Biển Số Nhận Diện</span>
+                <span class="stat-value success" id="licensePlates">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Thời Gian Chạy</span>
+                <span class="stat-value primary" id="runtime">00:00:00</span>
               </div>
             </div>
-          </div>
-        </div>
 
-        <!-- Processing Info -->
-        <div class="col-lg-8">
-          <div class="video-container">
-            <h3 class="mb-3">
-              <i class="fas fa-cogs"></i> Xử Lý Video Vi Phạm Đèn Đỏ
-            </h3>
-            <div class="text-center p-5">
-              <i class="fas fa-traffic-light fa-5x text-danger mb-3"></i>
-              <h5>Hệ Thống Phát Hiện Vi Phạm Vượt Đèn Đỏ</h5>
-              <p class="text-muted">
-                Sử dụng AI để phát hiện xe cộ vượt đèn đỏ và nhận diện biển số
-              </p>
-              <div class="mt-4">
-                <div class="row">
-                  <div class="col-md-4">
-                    <div class="text-center p-3">
-                      <i class="fas fa-eye fa-2x text-primary mb-2"></i>
-                      <h6>Phát Hiện Đèn Giao Thông</h6>
-                      <small class="text-muted">Sử dụng YOLO + HSV</small>
-                    </div>
+            <!-- Violations List -->
+            <div class="violations-list">
+              <h3 class="violations-title">
+                <i class="fas fa-exclamation-triangle"></i>
+                Vi Phạm Gần Đây
+              </h3>
+              <div id="violationsList">
+                <div class="violation-item">
+                  <div class="violation-icon">
+                    <i class="fas fa-car"></i>
                   </div>
-                  <div class="col-md-4">
-                    <div class="text-center p-3">
-                      <i class="fas fa-car fa-2x text-success mb-2"></i>
-                      <h6>Theo Dõi Xe Cộ</h6>
-                      <small class="text-muted"
-                        >Phát hiện vi phạm realtime</small
-                      >
+                  <div class="violation-info">
+                    <div class="violation-type">
+                      Vi phạm đèn đỏ
+                      <span class="license-plate">51G-12345</span>
                     </div>
+                    <div class="violation-time">14:32:15 - Hôm nay</div>
                   </div>
-                  <div class="col-md-4">
-                    <div class="text-center p-3">
-                      <i class="fas fa-id-card fa-2x text-warning mb-2"></i>
-                      <h6>Nhận Diện Biển Số</h6>
-                      <small class="text-muted">OCR cho biển số Việt Nam</small>
+                </div>
+                <div class="violation-item">
+                  <div class="violation-icon">
+                    <i class="fas fa-motorcycle"></i>
+                  </div>
+                  <div class="violation-info">
+                    <div class="violation-type">
+                      Vi phạm đèn đỏ
+                      <span class="license-plate">43A-67890</span>
                     </div>
+                    <div class="violation-time">14:28:42 - Hôm nay</div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-
-        <!-- Statistics -->
-        <div class="col-lg-4">
-          <h3 class="mb-3">
-            <i class="fas fa-chart-bar"></i> Thống Kê Vi Phạm
-          </h3>
-
-          <div class="stats-card">
-            <div class="stats-icon text-danger">
-              <i class="fas fa-exclamation-triangle"></i>
-            </div>
-            <div class="stats-value" id="totalViolations">0</div>
-            <div class="stats-label">Tổng Vi Phạm</div>
-          </div>
-
-          <div class="stats-card">
-            <div class="stats-icon text-primary">
-              <i class="fas fa-car"></i>
-            </div>
-            <div class="stats-value" id="carViolations">0</div>
-            <div class="stats-label">Ô Tô Vi Phạm</div>
-          </div>
-
-          <div class="stats-card">
-            <div class="stats-icon text-success">
-              <i class="fas fa-motorcycle"></i>
-            </div>
-            <div class="stats-value" id="motorViolations">0</div>
-            <div class="stats-label">Xe Máy Vi Phạm</div>
-          </div>
-
-          <button class="btn btn-info btn-block mt-3" id="exportBtn">
-            <i class="fas fa-download"></i> Xuất Báo Cáo
-          </button>
-        </div>
       </div>
-    </div>
+    </main>
 
-    <!-- Violation Alert -->
-    <div class="violation-alert" id="violationAlert">
-      <i class="fas fa-exclamation-circle"></i>
-      Phát hiện vi phạm vượt đèn đỏ!
-    </div>
-
-    <!-- Scripts -->
-    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     <script>
-      $(document).ready(function () {
-        let selectedFile = null;
-        let isAnalyzing = false;
+      let isDetecting = false;
+      let startTime = null;
+      let runtimeInterval = null;
+      let lightInterval = null;
+      let currentLight = "red";
+      let violationCount = {
+        total: 0,
+        motor: 0,
+        car: 0,
+        licensePlates: 0,
+      };
 
-        // Debug - check if file input exists
-        console.log(
-          "File input element:",
-          document.getElementById("fileInput")
-        );
+      // File upload handling
+      const uploadSection = document.getElementById("uploadSection");
+      const videoInput = document.getElementById("videoInput");
+      const videoStream = document.getElementById("videoStream");
+      const videoPlaceholder = document.getElementById("videoPlaceholder");
 
-        // Make upload box clickable
-        document
-          .getElementById("uploadBox")
-          .addEventListener("click", function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log("Upload box clicked (native)");
-            const fileInput = document.getElementById("fileInput");
-            if (fileInput) {
-              fileInput.click();
+      // Drag and drop functionality
+      uploadSection.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        uploadSection.classList.add("dragover");
+      });
+
+      uploadSection.addEventListener("dragleave", () => {
+        uploadSection.classList.remove("dragover");
+      });
+
+      uploadSection.addEventListener("drop", (e) => {
+        e.preventDefault();
+        uploadSection.classList.remove("dragover");
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+          handleVideoUpload(files[0]);
+        }
+      });
+
+      videoInput.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) {
+          handleVideoUpload(e.target.files[0]);
+        }
+      });
+
+      function handleVideoUpload(file) {
+        if (!file.type.startsWith("video/")) {
+          showAlert("error", "Vui lòng chọn file video hợp lệ!");
+          return;
+        }
+
+        showAlert("info", "Đang tải video lên...");
+
+        const formData = new FormData();
+        formData.append("video", file);
+
+        fetch("/upload_video", {
+          method: "POST",
+          body: formData,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              showAlert("success", "Video đã được tải lên thành công!");
+              uploadSection.style.display = "none";
+              startVideoStream();
             } else {
-              console.error("File input not found!");
+              showAlert("error", data.error || "Có lỗi xảy ra khi tải video!");
             }
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            showAlert("error", "Có lỗi xảy ra khi tải video!");
           });
+      }
 
-        // Also add jQuery handler as backup
-        $("#uploadBox").on("click", function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          console.log("Upload box clicked (jQuery)");
-          $("#fileInput").trigger("click");
-        });
+      function startVideoStream() {
+        videoPlaceholder.style.display = "none";
+        videoStream.style.display = "block";
+        videoStream.src = "/camera3";
+      }
 
-        // Alternative button click
-        $("#uploadBtnAlt").on("click", function () {
-          console.log("Alternative button clicked");
-          $("#fileInput").click();
-        });
+      function startDetection() {
+        if (!videoStream.src) {
+          showAlert("error", "Vui lòng tải video trước khi bắt đầu!");
+          return;
+        }
 
-        // Debug file input
-        $("#debugFileInput").on("change", function (e) {
-          console.log("Debug file input changed:", e.target.files);
-          const file = e.target.files[0];
-          if (file) {
-            handleFileSelect(file);
+        isDetecting = true;
+        startTime = new Date();
+
+        document.getElementById("startBtn").disabled = true;
+        document.getElementById("stopBtn").disabled = false;
+        document.getElementById("processBtn").style.display = "inline-flex";
+        document.getElementById("status").textContent = "Đang chạy";
+        document.getElementById("statusIndicator").style.display = "block";
+
+        startRuntimeTimer();
+        startTrafficLightSimulation();
+        showAlert("success", "Đã bắt đầu giám sát vi phạm đèn đỏ!");
+      }
+
+      function processVideo() {
+        if (!videoStream.src) {
+          showAlert("error", "Vui lòng tải video trước!");
+          return;
+        }
+
+        showAlert("info", "Đang xử lý video và xuất kết quả phân tích...");
+        document.getElementById("processBtn").disabled = true;
+
+        fetch('/process_red_light_video', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           }
-        });
-
-        // File input change
-        $("#fileInput").change(function (e) {
-          console.log("File input changed:", e.target.files);
-          const file = e.target.files[0];
-          if (file) {
-            handleFileSelect(file);
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            showAlert("success", `Xử lý hoàn tất! Phát hiện ${data.violation_count} vi phạm.`);
+            
+            // Tạo các nút download
+            const downloadSection = document.createElement('div');
+            downloadSection.className = 'download-section';
+            downloadSection.innerHTML = `
+              <h4>Kết quả phân tích:</h4>
+              <div class="download-buttons">
+                <a href="/download_processed_video" class="btn btn-primary" download>
+                  <i class="fas fa-download"></i> Tải Video Đã Xử Lý
+                </a>
+                <a href="/download_violations_csv" class="btn btn-success" download>
+                  <i class="fas fa-file-csv"></i> Tải Dữ Liệu Vi Phạm (CSV)
+                </a>
+              </div>
+            `;
+            
+            // Thêm vào trang
+            const container = document.querySelector('.container');
+            container.appendChild(downloadSection);
+            
           } else {
-            console.log("No file selected");
+            showAlert("error", `Lỗi: ${data.error}`);
           }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          showAlert("error", "Có lỗi xảy ra khi xử lý video!");
+        })
+        .finally(() => {
+          document.getElementById("processBtn").disabled = false;
         });
+      }
 
-        // Drag and drop
-        $("#uploadBox").on("dragover", function (e) {
-          e.preventDefault();
-          $(this).addClass("dragover");
-        });
+      function stopDetection() {
+        isDetecting = false;
 
-        $("#uploadBox").on("dragleave", function (e) {
-          e.preventDefault();
-          $(this).removeClass("dragover");
-        });
+        document.getElementById("startBtn").disabled = false;
+        document.getElementById("stopBtn").disabled = true;
+        document.getElementById("processBtn").style.display = "none";
+        document.getElementById("status").textContent = "Đã dừng";
+        document.getElementById("statusIndicator").style.display = "none";
 
-        $("#uploadBox").on("drop", function (e) {
-          e.preventDefault();
-          $(this).removeClass("dragover");
+        stopRuntimeTimer();
+        stopTrafficLightSimulation();
+        showAlert("info", "Đã dừng giám sát!");
+      }
 
-          const files = e.originalEvent.dataTransfer.files;
-          if (files.length > 0) {
-            handleFileSelect(files[0]);
+      function clearVideo() {
+        videoStream.src = "";
+        videoStream.style.display = "none";
+        videoPlaceholder.style.display = "flex";
+        uploadSection.style.display = "block";
+
+        stopDetection();
+        resetStats();
+        hideAllAlerts();
+      }
+
+      function startRuntimeTimer() {
+        runtimeInterval = setInterval(() => {
+          if (startTime) {
+            const now = new Date();
+            const diff = now - startTime;
+            const hours = Math.floor(diff / 3600000);
+            const minutes = Math.floor((diff % 3600000) / 60000);
+            const seconds = Math.floor((diff % 60000) / 1000);
+
+            document.getElementById("runtime").textContent = `${hours
+              .toString()
+              .padStart(2, "0")}:${minutes
+              .toString()
+              .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
           }
-        });
+        }, 1000);
+      }
 
-        // Handle file selection
-        function handleFileSelect(file) {
-          // Check file extension instead of MIME type for better compatibility
-          const fileName = file.name.toLowerCase();
-          const allowedExtensions = [".mp4", ".avi", ".mov", ".mkv", ".webm"];
-          const fileExtension = fileName.substring(fileName.lastIndexOf("."));
-
-          console.log(
-            "File selected:",
-            file.name,
-            "Type:",
-            file.type,
-            "Extension:",
-            fileExtension
-          );
-
-          if (!allowedExtensions.includes(fileExtension)) {
-            alert("Vui lòng chọn file video hợp lệ (MP4, AVI, MOV, MKV)");
-            return;
-          }
-
-          if (file.size > 500 * 1024 * 1024) {
-            alert("File quá lớn. Vui lòng chọn file nhỏ hơn 500MB");
-            return;
-          }
-
-          selectedFile = file;
-          $("#fileName").text(file.name);
-          $("#fileInfo").show();
-          $("#processBtn").show();
+      function stopRuntimeTimer() {
+        if (runtimeInterval) {
+          clearInterval(runtimeInterval);
+          runtimeInterval = null;
         }
+      }
 
-        // Clear file
-        $("#clearFile").click(function () {
-          selectedFile = null;
-          $("#fileInput").val("");
-          $("#fileInfo").hide();
-          $("#processBtn").hide();
-          $("#progressSection").hide();
-          $("#processingStatus").hide();
-          $("#downloadSection").hide();
-        });
+      function startTrafficLightSimulation() {
+        lightInterval = setInterval(() => {
+          if (currentLight === "red") {
+            currentLight = "yellow";
+          } else if (currentLight === "yellow") {
+            currentLight = "green";
+          } else {
+            currentLight = "red";
+          }
+          updateTrafficLight();
+        }, 5000);
+      }
 
-        // Upload video for processing (simplified)
-        function uploadVideoForProcessing() {
-          if (!selectedFile) return false;
-
-          const formData = new FormData();
-          formData.append("video", selectedFile);
-
-          // Get selected detection method
-          const detectionMethod = $(
-            'input[name="detectionMethod"]:checked'
-          ).val();
-          formData.append("detection_method", detectionMethod);
-
-          // Show progress
-          $("#progressSection").show();
-
-          return $.ajax({
-            url: "/upload_video",
-            type: "POST",
-            data: formData,
-            processData: false,
-            contentType: false,
-            xhr: function () {
-              const xhr = new window.XMLHttpRequest();
-              xhr.upload.addEventListener(
-                "progress",
-                function (evt) {
-                  if (evt.lengthComputable) {
-                    const percentComplete = Math.round(
-                      (evt.loaded / evt.total) * 100
-                    );
-                    $("#uploadProgress")
-                      .css("width", percentComplete + "%")
-                      .text(percentComplete + "%");
-                  }
-                },
-                false
-              );
-              return xhr;
-            },
-          });
+      function stopTrafficLightSimulation() {
+        if (lightInterval) {
+          clearInterval(lightInterval);
+          lightInterval = null;
         }
+      }
 
-        // Load real violation statistics
-        function loadViolationStats() {
-          $.ajax({
-            url: "/api/red_light_violations",
-            type: "GET",
-            success: function (data) {
-              $("#totalViolations").text(data.total_violations || 0);
-              // For now, split violations between cars and motorcycles roughly
-              const carViolations = Math.floor(
-                (data.total_violations || 0) * 0.6
-              );
-              const motorViolations =
-                (data.total_violations || 0) - carViolations;
-              $("#carViolations").text(carViolations);
-              $("#motorViolations").text(motorViolations);
+      function updateTrafficLight() {
+        document.getElementById("redLight").classList.remove("active");
+        document.getElementById("yellowLight").classList.remove("active");
+        document.getElementById("greenLight").classList.remove("active");
 
-              // Show detection method
-              const method = data.detection_method || "Basic";
-              console.log("Current detection method:", method);
-            },
-            error: function () {
-              console.log("Could not load violation statistics");
-            },
-          });
+        document.getElementById(currentLight + "Light").classList.add("active");
+
+        const statusText = {
+          red: "ĐÈN ĐỎ",
+          yellow: "ĐÈN VÀNG",
+          green: "ĐÈN XANH",
+        };
+        document.getElementById("lightStatus").textContent =
+          statusText[currentLight];
+      }
+
+      function resetStats() {
+        violationCount = { total: 0, motor: 0, car: 0, licensePlates: 0 };
+        document.getElementById("totalViolations").textContent = "0";
+        document.getElementById("motorViolations").textContent = "0";
+        document.getElementById("carViolations").textContent = "0";
+        document.getElementById("licensePlates").textContent = "0";
+        document.getElementById("runtime").textContent = "00:00:00";
+      }
+
+      function showAlert(type, message) {
+        hideAllAlerts();
+        const alert = document.getElementById(type + "Alert");
+        if (type === "error") {
+          document.getElementById("errorMessage").textContent = message;
+        } else if (type === "info") {
+          document.getElementById("infoMessage").textContent = message;
         }
+        alert.style.display = "block";
 
-        // Check for violations periodically
-        function checkForViolations() {
-          // Load initial stats
-          loadViolationStats();
-
-          // Refresh stats every 5 seconds
-          setInterval(function () {
-            loadViolationStats();
-          }, 5000);
-
-          // Simulate real-time updates (for demo)
-          setInterval(function () {
-            // Random light change simulation
-            if (Math.random() < 0.05) {
-              const lights = ["red", "yellow", "green"];
-              const lightTexts = ["Đèn Đỏ", "Đèn Vàng", "Đèn Xanh"];
-              const lightClasses = ["light-red", "light-yellow", "light-green"];
-              const randomIndex = Math.floor(Math.random() * 3);
-
-              $("#lightStatus")
-                .removeClass("light-red light-yellow light-green")
-                .addClass(lightClasses[randomIndex])
-                .html(
-                  '<i class="fas fa-circle"></i> ' + lightTexts[randomIndex]
-                );
-            }
+        if (type === "success" || type === "info") {
+          setTimeout(() => {
+            alert.style.display = "none";
           }, 3000);
         }
+      }
 
-        // Start checking for violations
-        checkForViolations();
-
-        // Process button click - Generate output video
-        $("#processBtn").click(function () {
-          if (!selectedFile) return;
-
-          const $btn = $(this);
-          $btn
-            .prop("disabled", true)
-            .html('<i class="fas fa-spinner fa-spin"></i> Đang tải lên...');
-
-          // First upload the video
-          uploadVideoForProcessing()
-            .done(function (uploadResponse) {
-              if (uploadResponse.success) {
-                $btn.html(
-                  '<i class="fas fa-cog fa-spin"></i> Đang xử lý video...'
-                );
-                $("#processingStatus").show();
-                $("#downloadSection").hide();
-                $("#progressSection").hide();
-
-                // Start processing
-                $.ajax({
-                  url: "/process_red_light_video",
-                  type: "POST",
-                  success: function (response) {
-                    if (response.success) {
-                      $("#processingMessage").text(response.message);
-
-                      // Start checking processing status
-                      checkProcessingStatus(response.job_id);
-                    } else {
-                      alert("Lỗi: " + (response.error || "Unknown error"));
-                      $btn
-                        .prop("disabled", false)
-                        .html('<i class="fas fa-cog"></i> Xử Lý và Xuất Video');
-                      $("#processingStatus").hide();
-                    }
-                  },
-                  error: function (xhr) {
-                    let errorMsg = "Lỗi khi xử lý video";
-                    if (xhr.responseJSON && xhr.responseJSON.error) {
-                      errorMsg = xhr.responseJSON.error;
-                    }
-                    alert(errorMsg);
-                    $btn
-                      .prop("disabled", false)
-                      .html('<i class="fas fa-cog"></i> Xử Lý và Xuất Video');
-                    $("#processingStatus").hide();
-                  },
-                });
-              } else {
-                alert(
-                  "Lỗi khi tải video: " +
-                    (uploadResponse.error || "Unknown error")
-                );
-                $btn
-                  .prop("disabled", false)
-                  .html('<i class="fas fa-cog"></i> Xử Lý và Xuất Video');
-              }
-            })
-            .fail(function (xhr) {
-              alert(
-                "Lỗi khi tải video: " +
-                  (xhr.responseJSON?.error || "Network error")
-              );
-              $btn
-                .prop("disabled", false)
-                .html('<i class="fas fa-cog"></i> Xử Lý và Xuất Video');
-            });
+      function hideAllAlerts() {
+        document.querySelectorAll(".alert").forEach((alert) => {
+          alert.style.display = "none";
         });
+      }
 
-        // Check processing status
-        function checkProcessingStatus(jobId) {
-          const checkStatus = () => {
-            $.ajax({
-              url: "/api/red_light_processing_status",
-              type: "GET",
-              success: function (data) {
-                if (data.status === "completed") {
-                  $("#processingStatus").hide();
-                  $("#downloadSection").show();
+      function simulateViolation() {
+        if (!isDetecting) return;
 
-                  // Display statistics
-                  const stats = data.stats || {};
-                  let statsText = `Tổng vi phạm: ${
-                    stats.total_violations || 0
-                  }. `;
-                  if (stats.processing_time) {
-                    statsText += `Thời gian xử lý: ${stats.processing_time.toFixed(
-                      1
-                    )} giây.`;
-                  }
-                  $("#processingStats").text(statsText);
+        const violationTypes = ["motor", "car"];
+        const type =
+          violationTypes[Math.floor(Math.random() * violationTypes.length)];
 
-                  // Set up download button
-                  $("#downloadBtn")
-                    .off("click")
-                    .on("click", function () {
-                      window.location.href = data.download_url;
-                    });
+        violationCount.total++;
+        violationCount[type]++;
 
-                  $("#processBtn")
-                    .prop("disabled", false)
-                    .html('<i class="fas fa-cog"></i> Xử Lý và Xuất Video');
-                } else if (data.status === "error") {
-                  $("#processingStatus").hide();
-                  alert("Lỗi xử lý: " + (data.error || "Unknown error"));
-                  $("#processBtn")
-                    .prop("disabled", false)
-                    .html('<i class="fas fa-cog"></i> Xử Lý và Xuất Video');
-                } else if (data.status === "processing") {
-                  $("#processingMessage").text(
-                    data.message || "Đang xử lý video..."
-                  );
-                  // Continue checking
-                  setTimeout(checkStatus, 2000);
-                } else {
-                  // Unknown status, stop checking
-                  $("#processingStatus").hide();
-                  $("#processBtn")
-                    .prop("disabled", false)
-                    .html('<i class="fas fa-cog"></i> Xử Lý và Xuất Video');
-                }
-              },
-              error: function () {
-                // Error checking status, stop trying
-                $("#processingStatus").hide();
-                $("#processBtn")
-                  .prop("disabled", false)
-                  .html('<i class="fas fa-cog"></i> Xử Lý và Xuất Video');
-              },
-            });
-          };
-
-          // Start checking immediately
-          checkStatus();
+        if (Math.random() < 0.7) {
+          violationCount.licensePlates++;
         }
 
-        // Process new video button
-        $("#processNewBtn").click(function () {
-          $("#downloadSection").hide();
-          $("#fileInfo").hide();
-          $("#processBtn").hide();
-          selectedFile = null;
-          $("#fileInput").val("");
-        });
+        document.getElementById("totalViolations").textContent =
+          violationCount.total;
+        document.getElementById("motorViolations").textContent =
+          violationCount.motor;
+        document.getElementById("carViolations").textContent =
+          violationCount.car;
+        document.getElementById("licensePlates").textContent =
+          violationCount.licensePlates;
 
-        // Export button
-        $("#exportBtn").click(function () {
-          alert("Tính năng xuất báo cáo đang được phát triển!");
-        });
-      });
+        addViolationToList(type);
+      }
+
+      function addViolationToList(type) {
+        const violationsList = document.getElementById("violationsList");
+        const violationItem = document.createElement("div");
+        violationItem.className = "violation-item";
+
+        const icon = type === "motor" ? "fas fa-motorcycle" : "fas fa-car";
+        const time = new Date().toLocaleTimeString();
+        const licensePlate = generateLicensePlate();
+
+        violationItem.innerHTML = `
+                <div class="violation-icon">
+                    <i class="${icon}"></i>
+                </div>
+                <div class="violation-info">
+                    <div class="violation-type">
+                        Vi phạm đèn đỏ
+                        <span class="license-plate">${licensePlate}</span>
+                    </div>
+                    <div class="violation-time">${time} - Hôm nay</div>
+                </div>
+            `;
+
+        violationsList.insertBefore(violationItem, violationsList.firstChild);
+
+        while (violationsList.children.length > 5) {
+          violationsList.removeChild(violationsList.lastChild);
+        }
+      }
+
+      function generateLicensePlate() {
+        const provinces = ["51G", "43A", "29A", "30A", "31A"];
+        const numbers = Math.floor(Math.random() * 90000) + 10000;
+        const province =
+          provinces[Math.floor(Math.random() * provinces.length)];
+        return `${province}-${numbers}`;
+      }
+
+      setInterval(() => {
+        if (isDetecting && currentLight === "red" && Math.random() < 0.2) {
+          simulateViolation();
+        }
+      }, 10000);
+
+      updateTrafficLight();
     </script>
   </body>
 </html>

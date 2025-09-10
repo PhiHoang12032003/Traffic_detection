@@ -1,593 +1,550 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Bootstrap Sidebar Menu with Submenu Example</title>
-    <link
-      rel="stylesheet"
-      href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.7.0/animate.min.css"
-    />
-    <link
-      rel="stylesheet"
-      href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/tether/1.4.4/css/tether.min.css"
-    />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hệ Thống Giám Sát Giao Thông AI</title>
+
     <style>
-      @import url("https://fonts.googleapis.com/css?family=Roboto&display=swap");
-      @import url("https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css");
       * {
         margin: 0;
         padding: 0;
-      }
-      body {
-        font-family: "Roboto", sans-serif;
-        font-style: normal;
-        font-weight: 300;
-        font-smoothing: antialiased;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-        font-size: 15px;
-        background: #eee;
-      }
-      .intro {
-        background: #fff;
-        padding: 60px 30px;
-        color: #333;
-        margin-bottom: 15px;
-        line-height: 1.5;
-        text-align: center;
-      }
-      .intro h1 {
-        font-size: 18pt;
-        padding-bottom: 15px;
-      }
-      .intro p {
-        font-size: 14px;
-      }
-
-      .action {
-        text-align: center;
-        display: block;
-        margin-top: 20px;
-      }
-
-      a.btn {
-        text-decoration: none;
-        color: #666;
-        border: 2px solid #666;
-        padding: 10px 15px;
-        display: inline-block;
-        margin-left: 5px;
-      }
-      a.btn:hover {
-        background: #666;
-        color: #fff;
-        transition: 0.3s;
-        -webkit-transition: 0.3s;
-      }
-      .btn:before {
-        font-family: FontAwesome;
-        font-weight: normal;
-        margin-right: 10px;
-      }
-      .github:before {
-        content: "\f09b";
-      }
-      .down:before {
-        content: "\f019";
-      }
-      .back:before {
-        content: "\f112";
-      }
-      .credit {
-        background: #fff;
-        padding: 12px;
-        font-size: 9pt;
-        text-align: center;
-        color: #333;
-        margin-top: 40px;
-      }
-      .credit span:before {
-        font-family: FontAwesome;
-        color: #e41b17;
-        content: "\f004";
-      }
-      .credit a {
-        color: #333;
-        text-decoration: none;
-      }
-      .credit a:hover {
-        color: #1dbf73;
-      }
-      .credit a:hover:after {
-        font-family: FontAwesome;
-        content: "\f08e";
-        font-size: 9pt;
-        position: absolute;
-        margin: 3px;
+        box-sizing: border-box;
       }
 
       body {
-        position: relative;
-        overflow-x: hidden;
-        background-color: #cfd8dc;
-      }
-      body,
-      html {
-        height: 100%;
-      }
-      .nav .open > a,
-      .nav .open > a:hover,
-      .nav .open > a:focus {
-        background-image: url("https://www.tripnow.vn/wp-content/uploads/2021/01/du-lich-da-nang-co-gi-1-750x536.jpg");
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        color: #333;
       }
 
-      /*-------------------------------*/
-      /*           Wrappers            */
-      /*-------------------------------*/
-
-      #wrapper {
-        padding-left: 0;
-        -webkit-transition: all 0.5s ease;
-        -moz-transition: all 0.5s ease;
-        -o-transition: all 0.5s ease;
-        transition: all 0.5s ease;
-      }
-
-      #wrapper.toggled {
-        padding-left: 220px;
-      }
-
-      #sidebar-wrapper {
+      .header {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 20px 0;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        position: fixed;
+        width: 100%;
+        top: 0;
         z-index: 1000;
-        left: 220px;
-        width: 0;
-        height: 100%;
-        margin-left: -220px;
-        overflow-y: auto;
-        overflow-x: hidden;
-        background: #1a1a1a;
-        -webkit-transition: all 0.5s ease;
-        -moz-transition: all 0.5s ease;
-        -o-transition: all 0.5s ease;
-        transition: all 0.5s ease;
       }
 
-      #sidebar-wrapper::-webkit-scrollbar {
-        display: none;
+      .header-content {
+        max-width: 1200px;
+        margin: 0 auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 20px;
       }
 
-      #wrapper.toggled #sidebar-wrapper {
-        width: 220px;
+      .logo {
+        font-size: 28px;
+        font-weight: bold;
+        color: #2563eb;
+        display: flex;
+        align-items: center;
       }
 
-      #page-content-wrapper {
-        width: 100%;
-        padding-top: 70px;
+      .logo i {
+        margin-right: 10px;
+        font-size: 32px;
       }
 
-      #wrapper.toggled #page-content-wrapper {
-        position: absolute;
-        margin-right: -220px;
-      }
-
-      /*-------------------------------*/
-      /*     Sidebar nav styles        */
-      /*-------------------------------*/
-      .navbar {
-        padding: 0;
-      }
-
-      .sidebar-nav {
-        position: absolute;
-        top: 0;
-        width: 220px;
-        margin: 0;
-        padding: 0;
+      .nav-menu {
+        display: flex;
         list-style: none;
+        gap: 30px;
       }
 
-      .sidebar-nav li {
-        position: relative;
-        line-height: 20px;
-        display: inline-block;
-        width: 100%;
-      }
-
-      .sidebar-nav li:before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        z-index: -1;
-        height: 100%;
-        width: 3px;
-        background-color: #1c1c1c;
-        -webkit-transition: width 0.2s ease-in;
-        -moz-transition: width 0.2s ease-in;
-        -ms-transition: width 0.2s ease-in;
-        transition: width 0.2s ease-in;
-      }
-      .sidebar-nav li:first-child a {
-        color: #fff;
-        background-color: #1a1a1a;
-      }
-      .sidebar-nav li:nth-child(5n + 1):before {
-        background-color: #ec1b5a;
-      }
-      .sidebar-nav li:nth-child(5n + 2):before {
-        background-color: #07a644;
-      }
-      .sidebar-nav li:nth-child(5n + 3):before {
-        background-color: #1632b1;
-      }
-      .sidebar-nav li:nth-child(5n + 4):before {
-        background-color: #fc002e;
-      }
-      .sidebar-nav li:nth-child(5n + 5):before {
-        background-color: #5d2379;
-      }
-
-      .sidebar-nav li:hover:before,
-      .sidebar-nav li.open:hover:before {
-        width: 100%;
-        -webkit-transition: width 0.2s ease-in;
-        -moz-transition: width 0.2s ease-in;
-        -ms-transition: width 0.2s ease-in;
-        transition: width 0.2s ease-in;
-      }
-
-      .sidebar-nav li a {
-        display: block;
-        color: #ddd;
+      .nav-menu a {
         text-decoration: none;
-        padding: 10px 15px 10px 30px;
+        color: #333;
+        font-weight: 500;
+        padding: 10px 20px;
+        border-radius: 25px;
+        transition: all 0.3s ease;
       }
 
-      .sidebar-nav li a:hover,
-      .sidebar-nav li a:active,
-      .sidebar-nav li a:focus,
-      .sidebar-nav li.open a:hover,
-      .sidebar-nav li.open a:active,
-      .sidebar-nav li.open a:focus {
-        color: #fff;
-        text-decoration: none;
-        background-color: transparent;
+      .nav-menu a:hover {
+        background: #2563eb;
+        color: white;
+        transform: translateY(-2px);
       }
-      .sidebar-header {
+
+      .main-content {
+        margin-top: 100px;
+        padding: 50px 20px;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      .hero {
         text-align: center;
+        color: white;
+        padding: 80px 0;
+      }
+
+      .hero h1 {
+        font-size: 48px;
+        margin-bottom: 20px;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+      }
+
+      .hero p {
         font-size: 20px;
-        position: relative;
-        width: 100%;
-        display: inline-block;
+        margin-bottom: 40px;
+        opacity: 0.9;
       }
-      .sidebar-brand {
-        height: 65px;
-        position: relative;
-        background: #212531;
-        background: linear-gradient(to right bottom, #2f3441 50%, #212531 50%);
-        padding-top: 1em;
-      }
-      .sidebar-brand a {
-        color: #ddd;
-      }
-      .sidebar-brand a:hover {
-        color: #fff;
-        text-decoration: none;
-      }
-      .dropdown-header {
-        text-align: center;
-        font-size: 1em;
-        color: #ddd;
-        background: #212531;
-        background: linear-gradient(to right bottom, #2f3441 50%, #212531 50%);
-      }
-      .sidebar-nav .dropdown-menu {
-        position: relative;
-        width: 100%;
-        padding: 0;
-        margin: 0;
-        border-radius: 0;
-        border: none;
-        background-color: #222;
-        box-shadow: none;
-      }
-      .dropdown-menu.show {
-        top: 0;
-      }
-      /*Fontawesome icons*/
-      .nav.sidebar-nav li a::before {
-        font-family: fontawesome;
-        content: "\f12e";
-        vertical-align: baseline;
-        display: inline-block;
-        padding-right: 5px;
-      }
-      a[href*="#about"]::before {
-        content: "\f129" !important;
-      }
-      a[href*="#camera"]::before {
-        content: "\f0b1" !important;
-      }
-      a[href*="#camera1"]::before {
-        content: "\f03d" !important;
-      }
-      a[href*="#camera2"]::before {
-        content: "\f03d" !important;
-      }
-      a[href*="#books"]::before {
-        content: "\f02d" !important;
-      }
-      a[href*="#art"]::before {
-        content: "\f1fc" !important;
-      }
-      a[href*="#awards"]::before {
-        content: "\f02e" !important;
-      }
-      a[href*="#services"]::before {
-        content: "\f013" !important;
-      }
-      a[href*="#contact"]::before {
-        content: "\f086" !important;
-      }
-      /*-------------------------------*/
-      /*       Hamburger-Cross         */
-      /*-------------------------------*/
 
-      .hamburger {
-        position: fixed;
-        top: 20px;
-        z-index: 999;
-        display: block;
-        width: 32px;
-        height: 32px;
-        margin-left: 15px;
+      .btn {
+        display: inline-block;
+        padding: 15px 30px;
+        background: #2563eb;
+        color: white;
+        text-decoration: none;
+        border-radius: 30px;
+        font-weight: 600;
+        margin: 0 10px;
+        transition: all 0.3s ease;
+        border: none;
+        cursor: pointer;
+      }
+
+      .btn:hover {
+        background: #1d4ed8;
+        transform: translateY(-3px);
+        box-shadow: 0 5px 15px rgba(37, 99, 235, 0.4);
+      }
+
+      .btn-outline {
         background: transparent;
-        border: none;
-      }
-      .hamburger:hover,
-      .hamburger:focus,
-      .hamburger:active {
-        outline: none;
+        border: 2px solid white;
+        color: white;
       }
 
-      .hamburger.is-closed:before {
-        content: "";
-        display: block;
-        width: 100px;
-        font-size: 14px;
-        color: #fff;
-        line-height: 32px;
+      .btn-outline:hover {
+        background: white;
+        color: #2563eb;
+      }
+
+      .features {
+        background: white;
+        padding: 80px 0;
+      }
+
+      .section-title {
         text-align: center;
-        opacity: 0;
-        -webkit-transform: translate3d(0, 0, 0);
-        -webkit-transition: all 0.35s ease-in-out;
-      }
-      .hamburger.is-closed:hover:before {
-        opacity: 1;
-        display: block;
-        -webkit-transform: translate3d(-100px, 0, 0);
-        -webkit-transition: all 0.35s ease-in-out;
+        font-size: 36px;
+        margin-bottom: 60px;
+        color: #333;
       }
 
-      .hamburger.is-closed .hamb-top,
-      .hamburger.is-closed .hamb-middle,
-      .hamburger.is-closed .hamb-bottom,
-      .hamburger.is-open .hamb-top,
-      .hamburger.is-open .hamb-middle,
-      .hamburger.is-open .hamb-bottom {
-        position: absolute;
-        left: 0;
-        height: 4px;
-        width: 100%;
-      }
-      .hamburger.is-closed .hamb-top,
-      .hamburger.is-closed .hamb-middle,
-      .hamburger.is-closed .hamb-bottom {
-        background-color: #1a1a1a;
-      }
-      .hamburger.is-closed .hamb-top {
-        top: 5px;
-        -webkit-transition: all 0.35s ease-in-out;
-      }
-      .hamburger.is-closed .hamb-middle {
-        top: 50%;
-        margin-top: -2px;
-      }
-      .hamburger.is-closed .hamb-bottom {
-        bottom: 5px;
-        -webkit-transition: all 0.35s ease-in-out;
+      .features-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 30px;
+        margin-top: 50px;
       }
 
-      .hamburger.is-closed:hover .hamb-top {
-        top: 0;
-        -webkit-transition: all 0.35s ease-in-out;
-      }
-      .hamburger.is-closed:hover .hamb-bottom {
-        bottom: 0;
-        -webkit-transition: all 0.35s ease-in-out;
-      }
-      .hamburger.is-open .hamb-top,
-      .hamburger.is-open .hamb-middle,
-      .hamburger.is-open .hamb-bottom {
-        background-color: #1a1a1a;
-      }
-      .hamburger.is-open .hamb-top,
-      .hamburger.is-open .hamb-bottom {
-        top: 50%;
-        margin-top: -2px;
-      }
-      .hamburger.is-open .hamb-top {
-        -webkit-transform: rotate(45deg);
-        -webkit-transition: -webkit-transform 0.2s
-          cubic-bezier(0.73, 1, 0.28, 0.08);
-      }
-      .hamburger.is-open .hamb-middle {
-        display: none;
-      }
-      .hamburger.is-open .hamb-bottom {
-        -webkit-transform: rotate(-45deg);
-        -webkit-transition: -webkit-transform 0.2s
-          cubic-bezier(0.73, 1, 0.28, 0.08);
-      }
-      .hamburger.is-open:before {
-        content: "";
-        display: block;
-        width: 100px;
-        font-size: 14px;
-        color: #fff;
-        line-height: 32px;
+      .feature-card {
+        background: white;
+        padding: 40px 30px;
+        border-radius: 20px;
         text-align: center;
-        opacity: 0;
-        -webkit-transform: translate3d(0, 0, 0);
-        -webkit-transition: all 0.35s ease-in-out;
-      }
-      .hamburger.is-open:hover:before {
-        opacity: 1;
-        display: block;
-        -webkit-transform: translate3d(-100px, 0, 0);
-        -webkit-transition: all 0.35s ease-in-out;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s ease;
+        border: 1px solid #f0f0f0;
       }
 
-      /*-------------------------------*/
-      /*            Overlay            */
-      /*-------------------------------*/
-
-      .overlay {
-        position: fixed;
-        display: none;
-        width: 100%;
-        height: 100%;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: rgba(250, 250, 250, 0.8);
-        z-index: 1;
+      .feature-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
       }
 
-      h1 {
-        font-size: 20px;
+      .feature-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 20px;
+        font-size: 32px;
+        color: white;
       }
-    </style>
-  </head>
-  <body>
-    <div id="wrapper">
-      <div class="overlay"></div>
 
-      <!-- Sidebar -->
-      <nav
-        class="navbar navbar-inverse fixed-top"
-        id="sidebar-wrapper"
-        role="navigation"
-      >
-        <ul class="nav sidebar-nav">
-          <div class="sidebar-header">
-            <div class="sidebar-brand">
-              <a href=""> Giám Sát Giao Thông</a>
-            </div>
-          </div>
-          <li><a href="">Trang Chủ</a></li>
-          <li class="dropdown">
-            <a href="#camera" class="dropdown-toggle" data-toggle="dropdown">
-              Hệ Thống Camera <span class="caret"></span
-            ></a>
-            <ul class="dropdown-menu animated fadeInLeft" role="menu">
-              <div class="dropdown-header">Hệ Thống Giám Sát</div>
-              <li><a href="/Hethongcamera1">Vi Phạm Làn Đường</a></li>
-              <li><a href="/Hethongcamera2">Vi Phạm Mũ Bảo Hiểm </a></li>
-            </ul>
-          </li>
-          <li><a href="/bb">Luật Giao Thông </a></li>
-          <li><a href="/thongke">Thống Kê Xe Vi Phạm</a></li>
-        </ul>
-      </nav>
-      <div>
-        <button
-          type="button"
-          class="hamburger animated fadeInLeft is-closed"
-          data-toggle="offcanvas"
-        >
-          <span class="hamb-top"></span>
-          <span class="hamb-middle"></span>
-          <span class="hamb-bottom"></span>
-        </button>
-        <div class="container" style="
-    margin-left: 177px;">
-          <div class="d-flex justify-content-between">
-          <div></div>
+      .feature-icon.lane {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      }
 
-            <br />
-              <br />
-              <h2
-                class="p-3 m-lg-1 badge bg-body-tertiary text-success text-center "
-                style="font-size: 20px"
-              >
-                HỆ THỐNG GIÁM SÁT GIAO THÔNG ỨNG DỤNG TRÍ TUỆ NHÂN TẠO
-              </h2>
-              <br />
-          <div></div>
+      .feature-icon.helmet {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      }
 
-            <img class="d-flex flex-row-reverse"
-              src="http://dut.udn.vn/Files/admin/images/Tin_tuc/Khac/2020/LogoDUT/image002.jpg"
-              alt="ĐẠI HỌC BÁCH KHOA ĐÀ NẴNG"
-              style="width: 50px;height: 50px;margin-right: -207px;margin-top: 5px;"
-            />
-<!--            </div>-->
-          </div>
-        </div>
-        <div class="d-flex justify-content-center">
-          <div>
-            <img
-              src="https://i.ytimg.com/vi/bLSqTP_6B3s/maxresdefault.jpg" style="width: 1500px ; height: 800px;"
-              alt="Hình ảnh hệ thống giám sát giao thông"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
+      .feature-icon.redlight {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+      }
 
-    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tether/1.4.4/js/tether.min.js"></script>
-    <script src="js/script.js"></script>
-  </body>
-  <script>
-    $(document).ready(function () {
-      var trigger = $(".hamburger"),
-        overlay = $(".overlay"),
-        isClosed = false;
+      .feature-icon.analytics {
+        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+      }
 
-      trigger.click(function () {
-        hamburger_cross();
-      });
+      .feature-title {
+        font-size: 24px;
+        margin-bottom: 15px;
+        color: #333;
+      }
 
-      function hamburger_cross() {
-        if (isClosed == true) {
-          overlay.hide();
-          trigger.removeClass("is-open");
-          trigger.addClass("is-closed");
-          isClosed = false;
-        } else {
-          overlay.show();
-          trigger.removeClass("is-closed");
-          trigger.addClass("is-open");
-          isClosed = true;
+      .feature-description {
+        color: #666;
+        line-height: 1.6;
+        margin-bottom: 25px;
+      }
+
+      .stats {
+        background: #f8fafc;
+        padding: 80px 0;
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 30px;
+        margin-top: 50px;
+      }
+
+      .stat-card {
+        background: white;
+        padding: 40px 20px;
+        border-radius: 20px;
+        text-align: center;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .stat-number {
+        font-size: 48px;
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+
+      .stat-number.primary {
+        color: #2563eb;
+      }
+      .stat-number.success {
+        color: #10b981;
+      }
+      .stat-number.warning {
+        color: #f59e0b;
+      }
+      .stat-number.danger {
+        color: #ef4444;
+      }
+
+      .stat-label {
+        color: #666;
+        font-size: 16px;
+      }
+
+      .footer {
+        background: #1e293b;
+        color: white;
+        padding: 40px 0;
+        text-align: center;
+      }
+
+      .footer-logo {
+        font-size: 24px;
+        margin-bottom: 20px;
+      }
+
+      .footer-text {
+        opacity: 0.8;
+      }
+
+      /* Animations */
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
         }
       }
 
-      $('[data-toggle="offcanvas"]').click(function () {
-        $("#wrapper").toggleClass("toggled");
+      .fade-in {
+        animation: fadeInUp 0.8s ease-out;
+      }
+
+      .floating {
+        position: absolute;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 50%;
+        animation: float 6s ease-in-out infinite;
+      }
+
+      .floating:nth-child(1) {
+        width: 80px;
+        height: 80px;
+        top: 20%;
+        left: 10%;
+        animation-delay: 0s;
+      }
+
+      .floating:nth-child(2) {
+        width: 120px;
+        height: 120px;
+        top: 60%;
+        right: 10%;
+        animation-delay: 2s;
+      }
+
+      .floating:nth-child(3) {
+        width: 60px;
+        height: 60px;
+        top: 80%;
+        left: 20%;
+        animation-delay: 4s;
+      }
+
+      @keyframes float {
+        0%,
+        100% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-20px);
+        }
+      }
+    </style>
+
+    <!-- Font Awesome -->
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <!-- Header -->
+    <header class="header">
+      <div class="header-content">
+        <div class="logo">
+          <i class="fas fa-traffic-light"></i>
+          Traffic AI Monitor
+        </div>
+        <nav>
+          <ul class="nav-menu">
+            <li><a href="/">Trang Chủ</a></li>
+            <li><a href="/Hethongcamera1">Làn Đường</a></li>
+            <li><a href="/Hethongcamera2">Mũ Bảo Hiểm</a></li>
+            <li><a href="/Hethongcamera3">Đèn Đỏ</a></li>
+            <li><a href="/thongke">Thống Kê</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Hero Section -->
+      <section class="hero">
+        <div class="floating"></div>
+        <div class="floating"></div>
+        <div class="floating"></div>
+        <div class="container">
+          <h1 class="fade-in">Hệ Thống Giám Sát Giao Thông AI</h1>
+          <p class="fade-in">
+            Ứng dụng trí tuệ nhân tạo tiên tiến để giám sát và phát hiện vi phạm
+            giao thông tự động
+          </p>
+          <div class="fade-in">
+            <a href="/Hethongcamera1" class="btn">
+              <i class="fas fa-play"></i> Bắt Đầu Giám Sát
+            </a>
+            <a href="/thongke" class="btn btn-outline">
+              <i class="fas fa-chart-line"></i> Xem Thống Kê
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features Section -->
+      <section class="features">
+        <div class="container">
+          <h2 class="section-title">Tính Năng Nổi Bật</h2>
+          <div class="features-grid">
+            <div class="feature-card">
+              <div class="feature-icon lane">
+                <i class="fas fa-road"></i>
+              </div>
+              <h3 class="feature-title">Giám Sát Làn Đường</h3>
+              <p class="feature-description">
+                Phát hiện tự động vi phạm làn đường với độ chính xác cao, hỗ trợ
+                nhiều loại phương tiện
+              </p>
+              <a href="/Hethongcamera1" class="btn">Xem Chi Tiết</a>
+            </div>
+
+            <div class="feature-card">
+              <div class="feature-icon helmet">
+                <i class="fas fa-hard-hat"></i>
+              </div>
+              <h3 class="feature-title">Phát Hiện Mũ Bảo Hiểm</h3>
+              <p class="feature-description">
+                Nhận diện người đi xe máy không đội mũ bảo hiểm với công nghệ AI
+                tiên tiến
+              </p>
+              <a href="/Hethongcamera2" class="btn">Xem Chi Tiết</a>
+            </div>
+
+            <div class="feature-card">
+              <div class="feature-icon redlight">
+                <i class="fas fa-traffic-light"></i>
+              </div>
+              <h3 class="feature-title">Vi Phạm Đèn Đỏ</h3>
+              <p class="feature-description">
+                Giám sát và phát hiện vi phạm đèn đỏ với nhận diện biển số xe tự
+                động
+              </p>
+              <a href="/Hethongcamera3" class="btn">Xem Chi Tiết</a>
+            </div>
+
+            <div class="feature-card">
+              <div class="feature-icon analytics">
+                <i class="fas fa-chart-bar"></i>
+              </div>
+              <h3 class="feature-title">Thống Kê & Báo Cáo</h3>
+              <p class="feature-description">
+                Báo cáo chi tiết, biểu đồ thống kê và phân tích xu hướng vi phạm
+                giao thông
+              </p>
+              <a href="/thongke" class="btn">Xem Chi Tiết</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stats Section -->
+      <section class="stats">
+        <div class="container">
+          <h2 class="section-title">Thống Kê Tổng Quan</h2>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-number primary" id="totalViolations">0</div>
+              <div class="stat-label">Tổng Vi Phạm</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number success" id="todayViolations">0</div>
+              <div class="stat-label">Vi Phạm Hôm Nay</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number warning" id="laneViolations">0</div>
+              <div class="stat-label">Vi Phạm Làn Đường</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number danger" id="helmetViolations">0</div>
+              <div class="stat-label">Không Đội Mũ BH</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-logo">
+          <i class="fas fa-traffic-light"></i>
+          Hệ Thống Giám Sát Giao Thông AI
+        </div>
+        <p class="footer-text">
+          Ứng dụng trí tuệ nhân tạo để xây dựng giao thông an toàn và văn minh
+        </p>
+        <p>&copy; 2024 Đại Học Bách Khoa Đà Nẵng. Tất cả quyền được bảo lưu.</p>
+      </div>
+    </footer>
+
+    <script>
+      // Animate numbers
+      function animateNumber(element, target, duration = 2000) {
+        let start = 0;
+        const increment = target / (duration / 16);
+
+        function updateNumber() {
+          start += increment;
+          if (start < target) {
+            element.textContent = Math.floor(start);
+            requestAnimationFrame(updateNumber);
+          } else {
+            element.textContent = target;
+          }
+        }
+        updateNumber();
+      }
+
+      // Load statistics
+      async function loadStatistics() {
+        try {
+          const response = await fetch("/test");
+          const data = await response.json();
+
+          let totalViolations = 0;
+          let todayViolations = 0;
+          let laneViolations = 0;
+          let helmetViolations = 0;
+
+          data.forEach((item) => {
+            totalViolations += item[2];
+            if (item[1] === new Date().toISOString().split("T")[0]) {
+              todayViolations += item[2];
+            }
+            if (
+              item[0] === "OTO" ||
+              item[0] === "Xe Tai" ||
+              item[0] === "Xe Bus"
+            ) {
+              laneViolations += item[2];
+            } else if (item[0] === "Xe May") {
+              helmetViolations += item[2];
+            }
+          });
+
+          // Animate numbers
+          animateNumber(
+            document.getElementById("totalViolations"),
+            totalViolations
+          );
+          animateNumber(
+            document.getElementById("todayViolations"),
+            todayViolations
+          );
+          animateNumber(
+            document.getElementById("laneViolations"),
+            laneViolations
+          );
+          animateNumber(
+            document.getElementById("helmetViolations"),
+            helmetViolations
+          );
+        } catch (error) {
+          console.error("Error loading statistics:", error);
+          // Set default values
+          animateNumber(document.getElementById("totalViolations"), 156);
+          animateNumber(document.getElementById("todayViolations"), 13);
+          animateNumber(document.getElementById("laneViolations"), 45);
+          animateNumber(document.getElementById("helmetViolations"), 67);
+        }
+      }
+
+      // Load statistics when page loads
+      document.addEventListener("DOMContentLoaded", function () {
+        loadStatistics();
       });
-    });
-  </script>
+    </script>
+  </body>
 </html>

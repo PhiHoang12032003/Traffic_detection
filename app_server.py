@@ -9,13 +9,13 @@ from flask import Flask, jsonify, url_for, request, session, send_file
 from flask import render_template, Response
 from flask_cors import CORS
 # from flask_mysqldb import MySQL  # Commented out for easier setup
-# from testHelmetNew import video_detect_helmet_with_plate, get_processing_progress, reset_processing_progress
+# Note: testHelmetNew functions are replaced with processHelmetVideo functionality
 from processHelmetVideo import process_helmet_video_complete
 import threading
 import uuid
 from testLane import *
-from testRedLight import video_detect_red_light
-from processRedLightVideo import process_red_light_video_complete
+# from testRedLight import video_detect_red_light  # Removed - using new red_light_main system
+from red_light_main import process_red_light_video_complete, generate_frames_red_light_new
 import createBB
 from werkzeug.utils import secure_filename
 import os
@@ -427,44 +427,153 @@ def camera_3():
 # Route for red light video stream
 @app.route("/camera3")
 def video_3():
+    # Debug session info
+    print(f"DEBUG camera3: Session keys: {list(session.keys())}")
+    print(f"DEBUG camera3: uploaded_video = {session.get('uploaded_video', 'NOT_FOUND')}")
+    
+    # Check if there's an uploaded video
+    uploaded_video = session.get('uploaded_video', None)
+    if not uploaded_video:
+        print("DEBUG: No uploaded video in session, showing placeholder")
+        # Instead of returning 400 error, return a placeholder stream
+        return Response(generate_placeholder_stream(),
+                        mimetype='multipart/x-mixed-replace; boundary=frame')
+    
+    # Check if file exists
+    if not os.path.exists(uploaded_video):
+        print(f"DEBUG: File {uploaded_video} does not exist, showing placeholder")
+        return Response(generate_placeholder_stream(),
+                        mimetype='multipart/x-mixed-replace; boundary=frame')
+    
+    print(f"DEBUG: Starting video stream for {uploaded_video}")
+    
+    # Check if user wants advanced detection
+    use_advanced = session.get('red_light_advanced', False)
+    
+    if use_advanced:
+        # Use advanced streaming with license plate detection
+        return Response(generate_frames_red_light_new(uploaded_video),
+                        mimetype='multipart/x-mixed-replace; boundary=frame')
+    else:
+        # Use basic streaming
+        return Response(generate_frames_red_light(path_x=uploaded_video),
+                        mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+# Route to process red light video and export results
+@app.route("/process_red_light_video", methods=['POST'])
+def process_red_light_video():
+    """Process uploaded video and export analysis results"""
+    print("DEBUG process_red_light_video: Processing request received")
+    
     # Check if there's an uploaded video
     uploaded_video = session.get('uploaded_video', None)
     if not uploaded_video:
         return jsonify({'error': 'No video uploaded'}), 400
     
-    return Response(generate_frames_red_light(path_x=uploaded_video),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
+    # Check if file exists
+    if not os.path.exists(uploaded_video):
+        return jsonify({'error': 'Video file not found'}), 400
+    
+    try:
+        # Process the video using the new system
+        output_video, violation_count = process_red_light_video_complete(uploaded_video)
+        
+        # Get the CSV file (should be the latest one in output directory)
+        output_dir = "output"
+        csv_files = [f for f in os.listdir(output_dir) if f.startswith('violations_data_') and f.endswith('.csv')]
+        
+        if csv_files:
+            # Get the most recent CSV file
+            latest_csv = max(csv_files, key=lambda x: os.path.getctime(os.path.join(output_dir, x)))
+            csv_path = os.path.join(output_dir, latest_csv)
+        else:
+            csv_path = None
+        
+        return jsonify({
+            'success': True,
+            'output_video': output_video,
+            'violation_count': violation_count,
+            'csv_path': csv_path,
+            'message': f'Video processed successfully. Found {violation_count} violations.'
+        })
+        
+    except Exception as e:
+        print(f"ERROR processing video: {str(e)}")
+        return jsonify({'error': f'Processing failed: {str(e)}'}), 500
 
+# Route to download processed video
+@app.route("/download_processed_video")
+def download_processed_video():
+    """Download the processed video file"""
+    output_dir = "output"
+    video_files = [f for f in os.listdir(output_dir) if f.startswith('processed_video_') and f.endswith('.mp4')]
+    
+    if video_files:
+        # Get the most recent video file
+        latest_video = max(video_files, key=lambda x: os.path.getctime(os.path.join(output_dir, x)))
+        video_path = os.path.join(output_dir, latest_video)
+        return send_file(video_path, as_attachment=True, download_name=latest_video)
+    else:
+        return "No processed video found", 404
+
+# Route to download violations CSV
+@app.route("/download_violations_csv")
+def download_violations_csv():
+    """Download the violations CSV file"""
+    output_dir = "output"
+    csv_files = [f for f in os.listdir(output_dir) if f.startswith('violations_data_') and f.endswith('.csv')]
+    
+    if csv_files:
+        # Get the most recent CSV file
+        latest_csv = max(csv_files, key=lambda x: os.path.getctime(os.path.join(output_dir, x)))
+        csv_path = os.path.join(output_dir, latest_csv)
+        return send_file(csv_path, as_attachment=True, download_name=latest_csv)
+    else:
+        return "No violations data found", 404
 
 # Route to upload video for analysis
 @app.route("/upload_video", methods=['POST'])
 def upload_video():
+    print("DEBUG upload_video: Upload request received")
+    
     if 'video' not in request.files:
+        print("DEBUG upload_video: No video in request files")
         return jsonify({'error': 'No video file provided'}), 400
     
     file = request.files['video']
     if file.filename == '':
+        print("DEBUG upload_video: Empty filename")
         return jsonify({'error': 'No selected file'}), 400
+    
+    print(f"DEBUG upload_video: File received: {file.filename}")
     
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        print(f"DEBUG upload_video: Saving to: {filepath}")
+        
         file.save(filepath)
         
         # Store in session
         session['uploaded_video'] = filepath
+        session['red_light_advanced'] = True
         
-        # Get detection method preference
-        detection_method = request.form.get('detection_method', 'original')
-        session['red_light_advanced'] = (detection_method == 'advanced')
+        print(f"DEBUG upload_video: Session updated - uploaded_video = {session.get('uploaded_video')}")
+        print(f"DEBUG upload_video: Session keys: {list(session.keys())}")
+        
+        # Always use advanced method (since we removed basic option)
+        detection_method = 'advanced'
         
         return jsonify({
             'success': True, 
             'filename': filename,
             'detection_method': detection_method,
+            'filepath': filepath,  # Add this for debugging
             'message': f'Video uploaded successfully! Using {detection_method} detection method.'
         })
     
+    print(f"DEBUG upload_video: Invalid file type for {file.filename}")
     return jsonify({'error': 'Invalid file type'}), 400
 
 
@@ -592,14 +701,403 @@ def upload_video_lane():
 
 
 # Generate frames for red light detection (basic streaming)
-def generate_frames_red_light(path_x):
-    red_light_output = video_detect_red_light(path_x)
+def generate_placeholder_stream():
+    """Generate a placeholder stream when no video is uploaded"""
+    import numpy as np
     
-    for detection_ in red_light_output:
-        ref, buffer = cv2.imencode('.jpg', detection_)
-        frame = buffer.tobytes()
+    while True:
+        # Create a black frame with text
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        
+        # Add text overlay
+        cv2.putText(frame, "CHUA CO VIDEO", (180, 200), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 2)
+        cv2.putText(frame, "Vui long upload video", (150, 250), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
+        cv2.putText(frame, "de bat dau phat hien", (150, 280), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
+        cv2.putText(frame, "vi pham vuot den do", (150, 310), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
+        
+        # Add loading animation (simple rotating circle)
+        import time
+        angle = int(time.time() * 100) % 360
+        center = (320, 380)
+        radius = 30
+        end_point = (int(center[0] + radius * np.cos(np.radians(angle))), 
+                    int(center[1] + radius * np.sin(np.radians(angle))))
+        cv2.circle(frame, center, radius, (100, 100, 100), 2)
+        cv2.line(frame, center, end_point, (0, 255, 0), 3)
+        
+        # Encode frame
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame_bytes = buffer.tobytes()
         yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        
+        # Small delay to prevent high CPU usage
+        time.sleep(0.1)
+
+
+def generate_frames_red_light(path_x):
+    """Basic red light detection - fallback when advanced detection is not used"""
+    cap = cv2.VideoCapture(path_x)
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+            
+        # Simple frame processing - just add text overlay
+        cv2.putText(frame, "Basic Red Light Detection", (50, 50), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame_bytes = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+    
+    cap.release()
+
+# Generate frames for red light detection with processing (advanced streaming)
+def generate_frames_red_light_advanced(path_x):
+    """Real-time streaming với advanced processing và license plate detection"""
+    from red_light_main import process_red_light_video_complete, generate_frames_red_light_new
+    import tempfile
+    import threading
+    import queue
+    import time
+    
+    # Create frame queue for streaming
+    frame_queue = queue.Queue(maxsize=30)  # Buffer 30 frames
+    processing_active = True
+    
+    def process_video_thread():
+        """Background thread để process video và đưa frames vào queue"""
+        nonlocal processing_active
+        try:
+            # Tạo temporary output file
+            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp_file:
+                temp_output = temp_file.name
+            
+            # Process video với custom frame callback
+            cap = cv2.VideoCapture(path_x)
+            if not cap.isOpened():
+                return
+                
+            # Import các function cần thiết từ processRedLightVideo
+            import sys
+            import os
+            sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+            
+            # Import helper functions (manually implement here for web streaming)
+            def draw_simulated_traffic_light_web(frame, current_light):
+                """Draw simulated traffic light for web streaming"""
+                height, width = frame.shape[:2]
+                
+                # Traffic light position (top-right corner)
+                light_width = 60
+                light_height = 150
+                light_x = width - light_width - 20
+                light_y = 20
+                
+                # Draw traffic light background
+                cv2.rectangle(frame, (light_x, light_y), (light_x + light_width, light_y + light_height), (0, 0, 0), -1)
+                cv2.rectangle(frame, (light_x, light_y), (light_x + light_width, light_y + light_height), (255, 255, 255), 2)
+                
+                # Light positions
+                circle_radius = 18
+                circle_x = light_x + light_width // 2
+                red_y = light_y + 30
+                yellow_y = light_y + 75
+                green_y = light_y + 120
+                
+                # Draw inactive lights
+                cv2.circle(frame, (circle_x, red_y), circle_radius, (50, 50, 50), -1)
+                cv2.circle(frame, (circle_x, yellow_y), circle_radius, (50, 50, 50), -1)
+                cv2.circle(frame, (circle_x, green_y), circle_radius, (50, 50, 50), -1)
+                
+                # Draw active light
+                if current_light == "red":
+                    cv2.circle(frame, (circle_x, red_y), circle_radius, (0, 0, 255), -1)
+                elif current_light == "yellow":
+                    cv2.circle(frame, (circle_x, yellow_y), circle_radius, (0, 255, 255), -1)
+                elif current_light == "green":
+                    cv2.circle(frame, (circle_x, green_y), circle_radius, (0, 255, 0), -1)
+                
+                # Add light status text
+                cv2.putText(frame, f"Light: {current_light.upper()}", 
+                           (light_x - 50, light_y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            
+            def extract_license_plate_web(frame, bbox, reader):
+                """Simple license plate extraction for web streaming"""
+                if reader is None:
+                    return None, None
+                    
+                try:
+                    x1, y1, x2, y2 = bbox
+                    vehicle_width = x2 - x1
+                    vehicle_height = y2 - y1
+                    
+                    if vehicle_width < 40 or vehicle_height < 30:
+                        return None, None
+                    
+                    # Focus on bottom part of vehicle  
+                    crop_h = y2 - y1
+                    crop_y1 = y1 + int(crop_h * 0.6)
+                    license_region = frame[crop_y1:y2, x1:x2]
+                    
+                    if license_region.size == 0 or license_region.shape[0] < 10:
+                        return None, None
+                    
+                    # Simple resize and OCR
+                    scale_factor = 2.0 if vehicle_width < 80 else 1.5
+                    enhanced = cv2.resize(license_region, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
+                    
+                    if len(enhanced.shape) == 3:
+                        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
+                    
+                    # Simple OCR call
+                    results = reader.readtext(enhanced, paragraph=False)
+                    
+                    best_text = None
+                    best_confidence = 0
+                    best_bbox = None
+                    
+                    for (bbox_coords, text, prob) in results:
+                        if prob > 0.2:
+                            cleaned_text = ''.join(c for c in text if c.isalnum())
+                            
+                            if len(cleaned_text) >= 4 and len(cleaned_text) <= 12:
+                                has_letters = any(c.isalpha() for c in cleaned_text)
+                                has_numbers = any(c.isdigit() for c in cleaned_text)
+                                
+                                if (has_letters and has_numbers) or (has_numbers and len(cleaned_text) >= 4):
+                                    if prob > best_confidence:
+                                        best_confidence = prob
+                                        best_text = cleaned_text.upper()
+                                        
+                                        # Convert bbox back to original frame coordinates
+                                        # bbox_coords is [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+                                        ocr_x1 = int(min([p[0] for p in bbox_coords]) / scale_factor) + x1
+                                        ocr_y1 = int(min([p[1] for p in bbox_coords]) / scale_factor) + crop_y1
+                                        ocr_x2 = int(max([p[0] for p in bbox_coords]) / scale_factor) + x1
+                                        ocr_y2 = int(max([p[1] for p in bbox_coords]) / scale_factor) + crop_y1
+                                        
+                                        best_bbox = (ocr_x1, ocr_y1, ocr_x2, ocr_y2)
+                    
+                    return best_text, best_bbox
+                    
+                except Exception as e:
+                    return None, None
+            from ultralytics import YOLO
+            import easyocr
+            import numpy as np
+            from collections import defaultdict
+            
+            # Initialize models như trong processRedLightVideo
+            model = YOLO('YoloWeights/yolov8n.pt')
+            vehicle_model = YOLO('best_new/vehicle.pt')
+            
+            try:
+                reader = easyocr.Reader(['vi', 'en'])
+            except:
+                reader = None
+            
+            # Initialize variables
+            frame_count = 0
+            current_light = "red"
+            violation_count = 0
+            processed_vehicles = set()
+            frames_since_light_change = 0
+            light_cycle_duration = 90
+            light_patterns = ["red", "red", "yellow", "green", "red", "red"]
+            current_light_index = 0
+            
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            # Detection lines
+            detection_lines = [{
+                "start": {"x": int(width * 0.0), "y": int(height * 0.85)},
+                "end": {"x": int(width * 0.6), "y": int(height * 0.90)}
+            }]
+            
+            while processing_active:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                    
+                frame_count += 1
+                
+                # Traffic light simulation
+                frames_since_light_change += 1
+                if frames_since_light_change >= light_cycle_duration:
+                    frames_since_light_change = 0
+                    current_light_index = (current_light_index + 1) % len(light_patterns)
+                    current_light = light_patterns[current_light_index]
+                
+                # Detect vehicles and violations (simplified for streaming)
+                vehicle_results = vehicle_model(frame)
+                
+                # Draw simulated traffic light
+                draw_simulated_traffic_light_web(frame, current_light)
+                
+                # Process vehicles và license plates
+                vehicles_with_plates = []
+                for r in vehicle_results:
+                    boxes = r.boxes
+                    if boxes is not None:
+                        for box in boxes:
+                            cls = int(box.cls[0])
+                            conf = float(box.conf[0])
+                            
+                            if cls in [0, 1, 2, 3, 4] and conf > 0.3:
+                                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                                
+                                # Extract license plate (simplified for speed)
+                                license_text = None
+                                license_bbox = None
+                                if reader and frame_count % 10 == 0:  # Every 10 frames
+                                    try:
+                                        license_text, license_bbox = extract_license_plate_web(frame, [x1, y1, x2, y2], reader)
+                                    except:
+                                        pass
+                                
+                                # Check violation
+                                vehicle_id = f"{x1}_{y1}_{x2}_{y2}"
+                                center_y = (y1 + y2) // 2
+                                
+                                is_violation = (current_light == "red" and 
+                                              center_y > height * 0.85 and 
+                                              vehicle_id not in processed_vehicles)
+                                
+                                if is_violation:
+                                    violation_count += 1
+                                    processed_vehicles.add(vehicle_id)
+                                    
+                                    # Draw violation
+                                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
+                                    cv2.putText(frame, "VI PHAM!", (x1, y1 - 10), 
+                                              cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                                else:
+                                    # Normal vehicle
+                                    color = (0, 255, 0) if current_light != "red" else (255, 255, 0)
+                                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                                
+                                # Draw license plate if detected
+                                if license_text and license_bbox:
+                                    # Draw license plate bounding box
+                                    lp_x1, lp_y1, lp_x2, lp_y2 = license_bbox
+                                    cv2.rectangle(frame, (lp_x1, lp_y1), (lp_x2, lp_y2), (0, 255, 0), 2)
+                                    
+                                    # Draw license plate text above the license plate box
+                                    label = f"LP: {license_text}"
+                                    label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+                                    
+                                    # Position above the license plate box
+                                    text_x = max(0, lp_x1)
+                                    text_y = max(label_size[1] + 5, lp_y1 - 5)
+                                    
+                                    # Ensure text stays within frame
+                                    if text_x + label_size[0] > width:
+                                        text_x = width - label_size[0] - 5
+                                    if text_y < label_size[1] + 5:
+                                        text_y = lp_y2 + label_size[1] + 10
+                                    
+                                    # Draw background rectangle for better visibility
+                                    cv2.rectangle(frame, 
+                                                (text_x, text_y - label_size[1] - 2), 
+                                                (text_x + label_size[0] + 4, text_y + 2), 
+                                                (0, 0, 0), -1)
+                                    
+                                    # Draw text
+                                    cv2.putText(frame, label, (text_x + 2, text_y), 
+                                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                                elif license_text:
+                                    # Fallback: Draw text above vehicle if no license bbox
+                                    label = f"LP: {license_text}"
+                                    label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+                                    
+                                    # Position above the vehicle box
+                                    text_x = max(0, x1)
+                                    text_y = max(label_size[1] + 5, y1 - 5)
+                                    
+                                    # Draw background rectangle for better visibility
+                                    cv2.rectangle(frame, 
+                                                (text_x, text_y - label_size[1] - 2), 
+                                                (text_x + label_size[0] + 4, text_y + 2), 
+                                                (0, 0, 0), -1)
+                                    
+                                    # Draw text
+                                    cv2.putText(frame, label, (text_x + 2, text_y), 
+                                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                
+                # Draw detection lines
+                for line in detection_lines:
+                    start_x = int(line["start"]["x"])
+                    start_y = int(line["start"]["y"])
+                    end_x = int(line["end"]["x"])
+                    end_y = int(line["end"]["y"])
+                    
+                    line_color = (0, 0, 255) if current_light == "red" else (255, 255, 255)
+                    cv2.line(frame, (start_x, start_y), (end_x, end_y), line_color, 3)
+                
+                # Draw info panel
+                cv2.rectangle(frame, (10, 10), (400, 120), (0, 0, 0), -1)
+                cv2.rectangle(frame, (10, 10), (400, 120), (255, 255, 255), 2)
+                
+                status_color = (0, 0, 255) if current_light == "red" else (0, 255, 0) if current_light == "green" else (0, 255, 255)
+                cv2.putText(frame, f"Den giao thong: {current_light.upper()}", (20, 35),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
+                cv2.putText(frame, f"Vi pham: {violation_count}", (20, 60),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                cv2.putText(frame, f"Frame: {frame_count}", (20, 85),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                cv2.putText(frame, "LIVE STREAM", (20, 105),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                
+                # Add frame to queue (non-blocking)
+                try:
+                    frame_queue.put(frame, block=False)
+                except queue.Full:
+                    # Skip frame if queue is full
+                    pass
+                    
+            cap.release()
+            
+        except Exception as e:
+            print(f"Error in processing thread: {e}")
+        finally:
+            processing_active = False
+    
+    # Start background processing thread
+    processing_thread = threading.Thread(target=process_video_thread, daemon=True)
+    processing_thread.start()
+    
+    # Stream frames from queue
+    try:
+        while processing_active or not frame_queue.empty():
+            try:
+                # Get frame from queue
+                frame = frame_queue.get(timeout=1.0)
+                
+                # Encode frame
+                ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                if ret:
+                    frame_bytes = buffer.tobytes()
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                
+            except queue.Empty:
+                # No frame available, continue
+                continue
+                
+    except GeneratorExit:
+        # Client disconnected
+        processing_active = False
+    finally:
+        processing_active = False
 
 
 # Clear uploaded video
@@ -686,6 +1184,20 @@ def reset_helmet_progress():
     return jsonify({'success': True, 'message': 'Progress reset successfully'})
 
 
+def reset_processing_progress():
+    """Reset processing progress for helmet detection"""
+    # Clear session data
+    if 'helmet_processing' in session:
+        session.pop('helmet_processing', None)
+    if 'pending_helmet_process' in session:
+        session.pop('pending_helmet_process', None)
+    if 'uploaded_video_helmet' in session:
+        session.pop('uploaded_video_helmet', None)
+    
+    # You can add additional cleanup here if needed
+    print("Processing progress reset")
+
+
 # API endpoints for red light violations
 @app.route("/api/red_light_violations", methods=['GET'])
 def get_red_light_violations():
@@ -732,148 +1244,16 @@ def set_detection_method():
     })
 
 
-@app.route("/process_red_light_video", methods=['POST'])
-def process_red_light_video():
-    """Process red light video and generate output video"""
-    uploaded_video = session.get('uploaded_video', None)
-    if not uploaded_video:
-        return jsonify({'error': 'No video uploaded'}), 400
-    
-    if not os.path.exists(uploaded_video):
-        return jsonify({'error': 'Uploaded video file not found'}), 400
-    
-    try:
-        # Generate unique ID for this processing job
-        job_id = str(uuid.uuid4())
-        
-        # Create output path
-        output_path = os.path.join('processed_videos', f'red_light_{job_id}_processed.mp4')
-        
-        # Store processing info in session
-        session['red_light_processing'] = {
-            'job_id': job_id,
-            'status': 'processing',
-            'input_path': uploaded_video,
-            'output_path': output_path,
-            'message': 'Processing red light detection...'
-        }
-        
-        # Get detection method before starting thread
-        use_advanced = session.get('red_light_advanced', False)
-        
-        # Start processing in background thread
-        def process_video_bg():
-            try:
-                result_path, stats = process_red_light_video_complete(
-                    uploaded_video, 
-                    output_path, 
-                    use_improved_detection=use_advanced
-                )
-                
-                # Use app context to update session
-                with app.app_context():
-                    from flask import session as thread_session
-                    # Store results in a temporary file for status checking
-                    import json
-                    status_file = f"{output_path}_status.json"
-                    status_data = {
-                        'status': 'completed',
-                        'stats': stats,
-                        'output_path': result_path,
-                        'message': 'Processing completed successfully!'
-                    }
-                    with open(status_file, 'w') as f:
-                        json.dump(status_data, f)
-                
-            except Exception as e:
-                # Store error status in file
-                with app.app_context():
-                    import json
-                    status_file = f"{output_path}_status.json"
-                    status_data = {
-                        'status': 'error',
-                        'error': str(e),
-                        'message': f'Processing failed: {str(e)}'
-                    }
-                    with open(status_file, 'w') as f:
-                        json.dump(status_data, f)
-        
-        # Start background processing
-        thread = threading.Thread(target=process_video_bg)
-        thread.daemon = True
-        thread.start()
-        
-        return jsonify({
-            'success': True,
-            'job_id': job_id,
-            'message': 'Video processing started. Please wait...',
-            'status_url': '/api/red_light_processing_status'
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route("/api/red_light_processing_status", methods=['GET'])
-def get_red_light_processing_status():
-    """Get red light processing status"""
-    processing_info = session.get('red_light_processing', {})
-    
-    if not processing_info:
-        return jsonify({'status': 'no_job'})
-    
-    # Check if there's a status file from background thread
-    output_path = processing_info.get('output_path')
-    if output_path:
-        status_file = f"{output_path}_status.json"
-        if os.path.exists(status_file):
-            try:
-                import json
-                with open(status_file, 'r') as f:
-                    file_status = json.load(f)
-                
-                # Update session with file status
-                session['red_light_processing'].update(file_status)
-                processing_info = session['red_light_processing']
-                
-                # Clean up status file
-                os.remove(status_file)
-            except Exception as e:
-                print(f"Error reading status file: {e}")
-    
-    response = {
-        'status': processing_info.get('status', 'processing'),
-        'job_id': processing_info.get('job_id'),
-        'message': processing_info.get('message', 'Processing...')
-    }
-    
-    if processing_info.get('status') == 'completed':
-        response['stats'] = processing_info.get('stats', {})
-        response['output_path'] = processing_info.get('output_path')
-        response['download_url'] = f"/download_processed_video/{processing_info.get('job_id')}"
-    elif processing_info.get('status') == 'error':
-        response['error'] = processing_info.get('error', 'Unknown error')
-    
-    return jsonify(response)
-
-
-@app.route("/download_processed_video/<job_id>", methods=['GET'])
-def download_processed_video(job_id):
-    """Download processed red light video"""
-    processing_info = session.get('red_light_processing', {})
-    
-    if (processing_info.get('job_id') != job_id or 
-        processing_info.get('status') != 'completed'):
-        return jsonify({'error': 'Invalid job ID or processing not completed'}), 404
-    
-    output_path = processing_info.get('output_path')
-    if not output_path or not os.path.exists(output_path):
-        return jsonify({'error': 'Processed video file not found'}), 404
-    
-    return send_file(output_path, 
-                     mimetype='video/mp4',
-                     as_attachment=True,
-                     download_name=f'red_light_detection_{job_id}.mp4')
+@app.route("/api/session_status", methods=['GET'])
+def get_session_status():
+    """Debug endpoint to check session status"""
+    return jsonify({
+        'session_keys': list(session.keys()),
+        'uploaded_video': session.get('uploaded_video', 'NOT_FOUND'),
+        'uploaded_video_exists': os.path.exists(session.get('uploaded_video', '')) if session.get('uploaded_video') else False,
+        'red_light_advanced': session.get('red_light_advanced', False),
+        'session_id': session.get('_session_id', 'NO_ID')
+    })
 
 
 if __name__ == "__main__":

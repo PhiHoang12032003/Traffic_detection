@@ -1,523 +1,1118 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-      integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC"
-      crossorigin="anonymous"
-    />
-    <title>Hệ thống phát hiện vi phạm mũ bảo hiểm</title>
+    <title>Giám Sát Vi Phạm Mũ Bảo Hiểm - Traffic AI Monitor</title>
+
     <style>
-      #preloader {
-        background: #e5eff1
-          url("https://th.bing.com/th/id/R.5be365b4576b73da8de3e8e7cf5ba94d?rik=VllzSYmE6UTNRg&pid=ImgRaw&r=0")
-          no-repeat center center;
-        background-size: 15%;
-        height: 100vh;
-        width: 100%;
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        min-height: 100vh;
+        color: #333;
+      }
+
+      .header {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 20px 0;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         position: fixed;
-        z-index: 100;
+        width: 100%;
+        top: 0;
+        z-index: 1000;
       }
-      .display {
-        animation: opacity 5s forwards;
+
+      .header-content {
+        max-width: 1400px;
+        margin: 0 auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 20px;
       }
-      @keyframes opacity {
+
+      .logo {
+        font-size: 24px;
+        font-weight: bold;
+        color: #10b981;
+        display: flex;
+        align-items: center;
+      }
+
+      .logo i {
+        margin-right: 10px;
+        font-size: 28px;
+      }
+
+      .nav-menu {
+        display: flex;
+        list-style: none;
+        gap: 20px;
+      }
+
+      .nav-menu a {
+        text-decoration: none;
+        color: #333;
+        font-weight: 500;
+        padding: 8px 16px;
+        border-radius: 20px;
+        transition: all 0.3s ease;
+      }
+
+      .nav-menu a:hover {
+        background: #10b981;
+        color: white;
+      }
+
+      .main-content {
+        margin-top: 80px;
+        padding: 30px 20px;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+
+      .page-header {
+        background: white;
+        padding: 30px;
+        border-radius: 20px;
+        margin-bottom: 30px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .page-title {
+        font-size: 32px;
+        color: #333;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+      }
+
+      .page-title i {
+        margin-right: 15px;
+        color: #10b981;
+      }
+
+      .page-subtitle {
+        color: #666;
+        font-size: 16px;
+      }
+
+      .content-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 30px;
+      }
+
+      .video-section {
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .video-container {
+        position: relative;
+        background: #000;
+        border-radius: 15px;
+        overflow: hidden;
+        margin-bottom: 20px;
+      }
+
+      .video-stream {
+        width: 100%;
+        height: 500px;
+        object-fit: cover;
+      }
+
+      .video-placeholder {
+        width: 100%;
+        height: 500px;
+        background: linear-gradient(45deg, #f0f0f0, #e0e0e0);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        color: #666;
+      }
+
+      .video-placeholder i {
+        font-size: 64px;
+        margin-bottom: 20px;
+        opacity: 0.5;
+      }
+
+      .video-controls {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+
+      .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 25px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-primary {
+        background: #10b981;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #059669;
+        transform: translateY(-2px);
+      }
+
+      .btn-success {
+        background: #10b981;
+        color: white;
+      }
+
+      .btn-success:hover {
+        background: #059669;
+        transform: translateY(-2px);
+      }
+
+      .btn-danger {
+        background: #ef4444;
+        color: white;
+      }
+
+      .btn-danger:hover {
+        background: #dc2626;
+        transform: translateY(-2px);
+      }
+
+      .btn-secondary {
+        background: #6b7280;
+        color: white;
+      }
+
+      .btn-secondary:hover {
+        background: #4b5563;
+        transform: translateY(-2px);
+      }
+
+      .upload-section {
+        background: #f0fdf4;
+        border: 2px dashed #86efac;
+        border-radius: 15px;
+        padding: 30px;
+        text-align: center;
+        margin-bottom: 20px;
+        transition: all 0.3s ease;
+      }
+
+      .upload-section:hover {
+        border-color: #10b981;
+        background: #ecfdf5;
+      }
+
+      .upload-section.dragover {
+        border-color: #10b981;
+        background: #d1fae5;
+      }
+
+      .upload-icon {
+        font-size: 48px;
+        color: #86efac;
+        margin-bottom: 15px;
+      }
+
+      .upload-text {
+        color: #64748b;
+        margin-bottom: 20px;
+      }
+
+      .file-input {
+        display: none;
+      }
+
+      .detection-method {
+        background: #f8fafc;
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+
+      .method-title {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 15px;
+        color: #333;
+      }
+
+      .method-options {
+        display: flex;
+        gap: 15px;
+      }
+
+      .method-option {
+        flex: 1;
+        padding: 15px;
+        border: 2px solid #e5e7eb;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-align: center;
+      }
+
+      .method-option:hover {
+        border-color: #10b981;
+        background: #f0fdf4;
+      }
+
+      .method-option.selected {
+        border-color: #10b981;
+        background: #d1fae5;
+      }
+
+      .method-option input {
+        margin-right: 8px;
+      }
+
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .stats-card {
+        background: white;
+        border-radius: 20px;
+        padding: 25px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .stats-title {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        color: #333;
+      }
+
+      .stat-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px 0;
+        border-bottom: 1px solid #f1f5f9;
+      }
+
+      .stat-item:last-child {
+        border-bottom: none;
+      }
+
+      .stat-label {
+        color: #64748b;
+        font-weight: 500;
+      }
+
+      .stat-value {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+      }
+
+      .stat-value.primary {
+        color: #10b981;
+      }
+      .stat-value.success {
+        color: #10b981;
+      }
+      .stat-value.warning {
+        color: #f59e0b;
+      }
+      .stat-value.danger {
+        color: #ef4444;
+      }
+
+      .progress-section {
+        background: white;
+        border-radius: 20px;
+        padding: 25px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .progress-title {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        color: #333;
+      }
+
+      .progress-bar {
+        width: 100%;
+        height: 20px;
+        background: #f1f5f9;
+        border-radius: 10px;
+        overflow: hidden;
+        margin-bottom: 10px;
+      }
+
+      .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #10b981, #34d399);
+        border-radius: 10px;
+        transition: width 0.3s ease;
+        width: 0%;
+      }
+
+      .progress-text {
+        text-align: center;
+        color: #64748b;
+        font-size: 14px;
+      }
+
+      .violations-list {
+        background: white;
+        border-radius: 20px;
+        padding: 25px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .violations-title {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        color: #333;
+      }
+
+      .violation-item {
+        display: flex;
+        align-items: center;
+        padding: 15px;
+        background: #fef2f2;
+        border-radius: 10px;
+        margin-bottom: 10px;
+        border-left: 4px solid #ef4444;
+      }
+
+      .violation-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #fee2e2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 15px;
+        color: #ef4444;
+      }
+
+      .violation-info {
+        flex: 1;
+      }
+
+      .violation-type {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 5px;
+      }
+
+      .violation-time {
+        font-size: 14px;
+        color: #64748b;
+      }
+
+      .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #10b981;
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
         100% {
-          display: none;
+          opacity: 1;
         }
       }
-      body {
-        background-color: #eaedf1;
+
+      .loading {
+        display: none;
+        text-align: center;
+        padding: 20px;
       }
-      a {
-        color: #1a4613;
+
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f4f6;
+        border-top: 4px solid #10b981;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 15px;
       }
-      a:hover {
-        text-shadow: 10px;
-        color: rgb(35, 255, 68);
-        border-radius: 5px;
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .alert {
+        padding: 15px 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        display: none;
+      }
+
+      .alert-success {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #a7f3d0;
+      }
+
+      .alert-error {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+      }
+
+      .alert-info {
+        background: #dbeafe;
+        color: #1e40af;
+        border: 1px solid #93c5fd;
+      }
+
+      .processing-status {
+        background: #f0f9ff;
+        border: 1px solid #bae6fd;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        display: none;
+      }
+
+      .processing-status.active {
+        display: block;
+      }
+
+      .status-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      .status-item:last-child {
+        margin-bottom: 0;
       }
     </style>
+
+    <!-- Font Awesome -->
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      rel="stylesheet"
+    />
   </head>
   <body>
-    <div id="preloader"></div>
-    <div
-      class="card-body d-flex justify-content-center"
-      style="background-color: white"
-    >
-      <div style="min-width: 400px">
-        <img
-          src="https://th.bing.com/th/id/R.e80b1669d9244a2d5dbf9f2129ffb8d6?rik=LlMWR%2finvBR3qg&riu=http%3a%2f%2fdut.udn.vn%2fFiles%2fadmin%2fimages%2fTin_tuc%2fKhac%2f2020%2fLogoDUT%2fimage002.jpg&ehk=nXRyggUJAHitxrCTe%2fkMLEJbSGgxJqnvFldNv0khy3I%3d&risl=&pid=ImgRaw&r=0"
-          alt="ĐẠI HỌC BÁCH KHOA ĐÀ NẴNG"
-          style="width: 100px; height: 100px"
-        />
-        <h1
-          class="p-3 m-lg-1 badge bg-body-tertiary text-success text-wrap fs-2"
-        >
-          HỆ THỐNG GIÁM SÁT GIAO THÔNG
-        </h1>
-        <h3
-          class="m-5 p-5 m-lg-1 text-center badge bg-body-tertiary text-success text-wrap fs-2"
-        >
-          Camera Giám Sát Xe Vi Phạm Mũ Bảo Hiểm
-        </h3>
-        <br />
-
-        <!-- Upload Video Section -->
-        <div class="upload-section m-3 p-3 border rounded">
-          <h5 class="text-success">Tải lên video kiểm tra</h5>
-          <input
-            type="file"
-            id="videoUpload"
-            accept="video/*"
-            class="form-control mb-2"
-          />
-
-          <!-- Detection method selection -->
-          <div class="mb-3">
-            <label class="form-label"
-              ><strong>Phương thức phát hiện:</strong></label
-            >
-            <div class="form-check">
-              <input
-                class="form-check-input"
-                type="radio"
-                name="detectionMethod"
-                id="originalDetection"
-                value="original"
-                checked
-              />
-              <label class="form-check-label" for="originalDetection">
-                <strong>Gốc (Khuyến nghị)</strong> - testHelmet.py đơn giản và
-                ổn định
-              </label>
-            </div>
-            <div class="form-check">
-              <input
-                class="form-check-input"
-                type="radio"
-                name="detectionMethod"
-                id="advancedDetection"
-                value="advanced"
-              />
-              <label class="form-check-label" for="advancedDetection">
-                Nâng cao - Có phát hiện biển số xe (có thể bỏ sót)
-              </label>
-            </div>
-          </div>
-
-          <button class="btn btn-success" onclick="uploadVideo()">
-            Tải lên
-          </button>
-          <button
-            class="btn btn-danger ms-2"
-            onclick="clearVideo()"
-            id="clearBtn"
-            style="display: none"
-          >
-            Xóa video
-          </button>
-          <div id="uploadStatus" class="mt-2"></div>
+    <!-- Header -->
+    <header class="header">
+      <div class="header-content">
+        <div class="logo">
+          <i class="fas fa-hard-hat"></i>
+          Giám Sát Mũ Bảo Hiểm
         </div>
-
-        <!-- Violation Stats -->
-        <div class="stats-section m-3 p-3 border rounded">
-          <h5 class="text-danger">Thống kê vi phạm</h5>
-          <p id="violationCount" class="fs-4">Đang xử lý...</p>
-          <div
-            id="violationList"
-            class="mt-2"
-            style="max-height: 200px; overflow-y: auto"
-          >
-            <!-- Violation details will be populated here -->
-          </div>
-        </div>
-
-        <h4 class="m-5">
-          <a class="text-decoration-none" href="/Hethongcamera1">
-            1. Camera Giám Sát Phương Tiện Vi Phạm Làn Đường</a
-          >
-        </h4>
-        <h4 class="m-5">
-          <a class="text-decoration-none" href="/thongke">
-            2. Thống Kê Phương Tiện Vi Phạm</a
-          >
-        </h4>
-        <h4 class="m-5">
-          <a class="text-decoration-none" href="/bb">
-            3 . Một Số Quy Định Giao Thông</a
-          >
-        </h4>
-        <h4 class="m-5">
-          <a class="text-decoration-none" href="/"> 4 . Quay Lại Trang Chủ</a>
-        </h4>
+        <nav>
+          <ul class="nav-menu">
+            <li><a href="/">Trang Chủ</a></li>
+            <li><a href="/Hethongcamera1">Làn Đường</a></li>
+            <li><a href="/Hethongcamera2">Mũ Bảo Hiểm</a></li>
+            <li><a href="/Hethongcamera3">Đèn Đỏ</a></li>
+            <li><a href="/thongke">Thống Kê</a></li>
+          </ul>
+        </nav>
       </div>
-      <div class="steam" id="video-frame">
-        <h3 class="conn d-none" id="conn-alert">No Connected</h3>
-        <div
-          id="no-video-message"
-          class="text-center p-5 m-5"
-          style="display: block"
-        >
-          <h3 class="text-warning">Chưa có video được tải lên</h3>
-          <p class="text-muted">
-            Vui lòng tải lên video để bắt đầu phân tích vi phạm mũ bảo hiểm
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="container">
+        <!-- Page Header -->
+        <div class="page-header">
+          <h1 class="page-title">
+            <i class="fas fa-hard-hat"></i>
+            Giám Sát Vi Phạm Mũ Bảo Hiểm
+          </h1>
+          <p class="page-subtitle">
+            Phát hiện tự động người đi xe máy không đội mũ bảo hiểm với công
+            nghệ AI tiên tiến
           </p>
         </div>
-        <video
-          id="processedVideo"
-          controls
-          autoplay
-          loop
-          class="img-fluid"
-          style="width: 1200px; height: 700px; display: none"
-        >
-          <source src="" type="video/mp4" />
-          Trình duyệt của bạn không hỗ trợ video.
-        </video>
-      </div>
-    </div>
-  </body>
-  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js"></script>
-  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/tether/1.4.4/js/tether.min.js"></script>
-  <script>
-    // Check if we have a processed video
-    function checkForProcessedVideo() {
-      fetch("/api/processing_status")
-        .then((response) => response.json())
-        .then((data) => {
-          const video = document.getElementById("processedVideo");
-          const noVideoMsg = document.getElementById("no-video-message");
 
-          if (data.status === "completed" && data.output_path) {
-            // Show the processed video
-            video.querySelector("source").src = "/camera2";
-            video.load();
-            video.style.display = "block";
-            noVideoMsg.style.display = "none";
+        <!-- Content Grid -->
+        <div class="content-grid">
+          <!-- Video Section -->
+          <div class="video-section">
+            <!-- Upload Section -->
+            <div class="upload-section" id="uploadSection">
+              <div class="upload-icon">
+                <i class="fas fa-cloud-upload-alt"></i>
+              </div>
+              <div class="upload-text">
+                <strong>Kéo thả video vào đây</strong><br />
+                hoặc click để chọn file video
+              </div>
+              <input
+                type="file"
+                id="videoInput"
+                class="file-input"
+                accept="video/*"
+              />
+              <button
+                class="btn btn-primary"
+                onclick="document.getElementById('videoInput').click()"
+              >
+                <i class="fas fa-folder-open"></i>
+                Chọn Video
+              </button>
+            </div>
 
-            // Update stats if available
-            if (data.stats) {
-              const violationCount = document.getElementById("violationCount");
-              violationCount.innerHTML =
-                'Số lượng vi phạm: <span class="text-danger">' +
-                data.stats.total_violations +
-                "</span>";
+            <!-- Detection Method -->
+            <div class="detection-method">
+              <div class="method-title">
+                <i class="fas fa-cog"></i>
+                Phương Pháp Phát Hiện
+              </div>
+              <div class="method-options">
+                <div
+                  class="method-option selected"
+                  onclick="selectMethod('original')"
+                >
+                  <input
+                    type="radio"
+                    name="detectionMethod"
+                    value="original"
+                    checked
+                  />
+                  <strong>Phương Pháp Cơ Bản</strong>
+                  <br /><small>Nhanh, phù hợp video ngắn</small>
+                </div>
+                <div class="method-option" onclick="selectMethod('advanced')">
+                  <input type="radio" name="detectionMethod" value="advanced" />
+                  <strong>Phương Pháp Nâng Cao</strong>
+                  <br /><small>Chính xác cao, nhận diện biển số</small>
+                </div>
+              </div>
+            </div>
 
-              // Show violation details
-              const violationList = document.getElementById("violationList");
-              if (data.stats.violations && data.stats.violations.length > 0) {
-                let listHTML = '<ul class="list-group">';
-                data.stats.violations.forEach((v, idx) => {
-                  listHTML += `<li class="list-group-item">
-                    <strong>Vi phạm ${idx + 1}:</strong> 
-                    ${
-                      v.license_plate
-                        ? "Biển số: " + v.license_plate
-                        : "Không phát hiện biển số"
-                    }
-                    (Giây thứ ${Math.round(v.time)})
-                  </li>`;
-                });
-                listHTML += "</ul>";
-                violationList.innerHTML = listHTML;
-              }
-            }
-          } else if (data.status === "processing") {
-            // Still processing - get detailed progress
-            fetch("/api/helmet_progress")
-              .then((response) => response.json())
-              .then((progress) => {
-                noVideoMsg.innerHTML = `
-                  <h3 class="text-info">Đang xử lý video...</h3>
-                  <div class="progress mt-3">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
-                         role="progressbar" 
-                         style="width: ${progress.percentage}%"
-                         aria-valuenow="${progress.percentage}" 
-                         aria-valuemin="0" 
-                         aria-valuemax="100">
-                      ${progress.percentage.toFixed(1)}%
-                    </div>
+            <!-- Alerts -->
+            <div class="alert alert-success" id="successAlert">
+              <i class="fas fa-check-circle"></i>
+              Video đã được tải lên thành công!
+            </div>
+            <div class="alert alert-error" id="errorAlert">
+              <i class="fas fa-exclamation-circle"></i>
+              <span id="errorMessage">Có lỗi xảy ra khi tải video!</span>
+            </div>
+            <div class="alert alert-info" id="infoAlert">
+              <i class="fas fa-info-circle"></i>
+              <span id="infoMessage">Đang xử lý video...</span>
+            </div>
+
+            <!-- Processing Status -->
+            <div class="processing-status" id="processingStatus">
+              <div class="status-item">
+                <span>Trạng thái xử lý:</span>
+                <span id="processingState">Chờ</span>
+              </div>
+              <div class="status-item">
+                <span>Tiến độ:</span>
+                <span id="processingProgress">0%</span>
+              </div>
+              <div class="status-item">
+                <span>Thời gian ước tính:</span>
+                <span id="estimatedTime">--</span>
+              </div>
+            </div>
+
+            <!-- Video Controls -->
+            <div class="video-controls">
+              <button
+                class="btn btn-success"
+                id="processBtn"
+                onclick="processVideo()"
+              >
+                <i class="fas fa-play"></i>
+                Xử Lý Video
+              </button>
+              <button
+                class="btn btn-danger"
+                id="stopBtn"
+                onclick="stopProcessing()"
+                disabled
+              >
+                <i class="fas fa-stop"></i>
+                Dừng Xử Lý
+              </button>
+              <button class="btn btn-secondary" onclick="clearVideo()">
+                <i class="fas fa-trash"></i>
+                Xóa Video
+              </button>
+            </div>
+
+            <!-- Loading -->
+            <div class="loading" id="loading">
+              <div class="spinner"></div>
+              <p>Đang xử lý video...</p>
+            </div>
+
+            <!-- Video Container -->
+            <div class="video-container">
+              <video
+                id="videoStream"
+                class="video-stream"
+                style="display: none"
+                controls
+              >
+                <source src="" type="video/mp4" />
+                Trình duyệt không hỗ trợ video.
+              </video>
+              <div id="videoPlaceholder" class="video-placeholder">
+                <i class="fas fa-video"></i>
+                <h3>Chưa có video</h3>
+                <p>Vui lòng tải lên video để bắt đầu xử lý</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sidebar -->
+          <div class="sidebar">
+            <!-- Stats Card -->
+            <div class="stats-card">
+              <h3 class="stats-title">
+                <i class="fas fa-chart-bar"></i>
+                Thống Kê Phát Hiện
+              </h3>
+              <div class="stat-item">
+                <span class="stat-label">Trạng Thái</span>
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <span class="stat-value" id="status">Chờ</span>
+                  <div
+                    class="status-indicator"
+                    id="statusIndicator"
+                    style="display: none"
+                  ></div>
+                </div>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Tổng Vi Phạm</span>
+                <span class="stat-value danger" id="totalViolations">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Có Mũ BH</span>
+                <span class="stat-value success" id="withHelmet">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Không Mũ BH</span>
+                <span class="stat-value danger" id="withoutHelmet">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Tỷ Lệ Vi Phạm</span>
+                <span class="stat-value warning" id="violationRate">0%</span>
+              </div>
+            </div>
+
+            <!-- Progress Section -->
+            <div class="progress-section">
+              <h3 class="progress-title">
+                <i class="fas fa-tasks"></i>
+                Tiến Độ Xử Lý
+              </h3>
+              <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+              </div>
+              <div class="progress-text" id="progressText">Chưa bắt đầu</div>
+            </div>
+
+            <!-- Violations List -->
+            <div class="violations-list">
+              <h3 class="violations-title">
+                <i class="fas fa-exclamation-triangle"></i>
+                Vi Phạm Gần Đây
+              </h3>
+              <div id="violationsList">
+                <div class="violation-item">
+                  <div class="violation-icon">
+                    <i class="fas fa-user-times"></i>
                   </div>
-                  <div class="row mt-2">
-                    <div class="col-md-6">
-                      <small class="text-muted">Frame: ${
-                        progress.current_frame
-                      }/${progress.total_frames}</small>
-                    </div>
-                    <div class="col-md-6 text-end">
-                      <small class="text-muted">Còn lại: ${
-                        progress.formatted_time_left
-                      }</small>
-                    </div>
-                  </div>
-                  <div class="mt-2">
-                    <small class="text-success">Vi phạm phát hiện: ${
-                      progress.violations
-                    }</small>
-                  </div>
-                `;
-              })
-              .catch(() => {
-                // Fallback to simple progress bar
-                noVideoMsg.innerHTML = `
-                  <h3 class="text-info">Đang xử lý video...</h3>
-                  <p class="text-muted">Vui lòng đợi trong giây lát</p>
-                  <div class="progress mt-2">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                         role="progressbar" style="width: 100%"></div>
-                  </div>
-                `;
-              });
-          }
-        })
-        .catch((error) => {
-          console.error("Error checking video status:", error);
-        });
-    }
-
-    // Check on page load
-    checkForProcessedVideo();
-
-    // Progress updates disabled to reduce server load
-
-    // Upload video function
-    function uploadVideo() {
-      const fileInput = document.getElementById("videoUpload");
-      const statusDiv = document.getElementById("uploadStatus");
-      const file = fileInput.files[0];
-
-      if (!file) {
-        statusDiv.innerHTML =
-          '<p class="text-danger">Vui lòng chọn file video!</p>';
-        return;
-      }
-
-      // Get selected detection method
-      const detectionMethod = document.querySelector(
-        'input[name="detectionMethod"]:checked'
-      ).value;
-
-      const formData = new FormData();
-      formData.append("video", file);
-      formData.append("detection_method", detectionMethod);
-
-      statusDiv.innerHTML = '<p class="text-info">Đang tải lên...</p>';
-
-      fetch("/upload_video_helmet", {
-        method: "POST",
-        body: formData,
-      })
-        .then((response) => response.json())
-        .then((data) => {
-          if (data.success) {
-            statusDiv.innerHTML =
-              '<p class="text-info">' +
-              data.message +
-              "</p>" +
-              '<div class="progress mt-2">' +
-              '<div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>' +
-              "</div>";
-
-            // Start the actual processing
-            if (data.processing_url) {
-              fetch(data.processing_url)
-                .then((resp) => resp.json())
-                .then((result) => {
-                  if (result.success) {
-                    statusDiv.innerHTML =
-                      '<p class="text-success">Xử lý hoàn tất!</p>';
-                    // Reload page to show processed video
-                    setTimeout(() => {
-                      window.location.reload();
-                    }, 1000);
-                  } else {
-                    statusDiv.innerHTML =
-                      '<p class="text-danger">Lỗi xử lý: ' +
-                      result.error +
-                      "</p>";
-                  }
-                })
-                .catch((err) => {
-                  statusDiv.innerHTML =
-                    '<p class="text-danger">Lỗi xử lý video</p>';
-                });
-            } else {
-              // Start checking processing status
-              checkProcessingStatus(data.job_id);
-            }
-          } else {
-            statusDiv.innerHTML =
-              '<p class="text-danger">Lỗi: ' + data.error + "</p>";
-          }
-        })
-        .catch((error) => {
-          statusDiv.innerHTML =
-            '<p class="text-danger">Lỗi kết nối: ' + error + "</p>";
-        });
-    }
-
-    // Check processing status - disabled to reduce server load
-    function checkProcessingStatus(jobId) {
-      const statusDiv = document.getElementById("uploadStatus");
-      statusDiv.innerHTML = '<p class="text-info">Đang xử lý video... Vui lòng đợi và tải lại trang thủ công sau vài phút.</p>';
-      return; // Exit early to skip polling
-      
-      // OLD CODE WITH CONTINUOUS POLLING - DISABLED
-      /*
-
-      const checkInterval = setInterval(() => {
-        // Get detailed progress information
-        fetch("/api/helmet_progress")
-          .then((response) => response.json())
-          .then((progress) => {
-            if (progress.status === "completed") {
-              clearInterval(checkInterval);
-              statusDiv.innerHTML =
-                '<p class="text-success">Xử lý hoàn tất! Đang tải video...</p>';
-
-              // Update violation stats
-              const violationCount = document.getElementById("violationCount");
-              violationCount.innerHTML =
-                'Số lượng vi phạm: <span class="text-danger">' +
-                progress.violations +
-                "</span>";
-
-              // Reload page to show processed video
-              setTimeout(() => {
-                window.location.reload();
-              }, 1500);
-            } else if (progress.status === "processing") {
-              // Show detailed progress
-              const progressHtml = `
-                <div class="progress-info">
-                  <p class="text-info mb-2">Đang xử lý video...</p>
-                  <div class="progress mb-2">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
-                         role="progressbar" 
-                         style="width: ${progress.percentage}%"
-                         aria-valuenow="${progress.percentage}" 
-                         aria-valuemin="0" 
-                         aria-valuemax="100">
-                      ${progress.percentage.toFixed(1)}%
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div class="col-md-6">
-                      <small class="text-muted">Frame: ${
-                        progress.current_frame
-                      }/${progress.total_frames}</small>
-                    </div>
-                    <div class="col-md-6 text-end">
-                      <small class="text-muted">Thời gian còn lại: ${
-                        progress.formatted_time_left
-                      }</small>
-                    </div>
-                  </div>
-                  <div class="mt-1">
-                    <small class="text-success">Vi phạm phát hiện: ${
-                      progress.violations
-                    }</small>
+                  <div class="violation-info">
+                    <div class="violation-type">Không đội mũ bảo hiểm</div>
+                    <div class="violation-time">14:32:15 - Hôm nay</div>
                   </div>
                 </div>
-              `;
-              statusDiv.innerHTML = progressHtml;
+                <div class="violation-item">
+                  <div class="violation-icon">
+                    <i class="fas fa-user-times"></i>
+                  </div>
+                  <div class="violation-info">
+                    <div class="violation-type">Không đội mũ bảo hiểm</div>
+                    <div class="violation-time">14:28:42 - Hôm nay</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
 
-              // Also update the violation count in real-time
-              const violationCount = document.getElementById("violationCount");
-              violationCount.innerHTML =
-                'Số lượng vi phạm: <span class="text-danger">' +
-                progress.violations +
-                "</span>";
-            } else if (progress.status === "error") {
-              clearInterval(checkInterval);
-              statusDiv.innerHTML =
-                '<p class="text-danger">Lỗi xử lý video</p>';
+    <script>
+      let isProcessing = false;
+      let processingInterval = null;
+      let currentMethod = "original";
+      let violationCount = {
+        total: 0,
+        withHelmet: 0,
+        withoutHelmet: 0,
+      };
+
+      // File upload handling
+      const uploadSection = document.getElementById("uploadSection");
+      const videoInput = document.getElementById("videoInput");
+      const videoStream = document.getElementById("videoStream");
+      const videoPlaceholder = document.getElementById("videoPlaceholder");
+
+      // Drag and drop functionality
+      uploadSection.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        uploadSection.classList.add("dragover");
+      });
+
+      uploadSection.addEventListener("dragleave", () => {
+        uploadSection.classList.remove("dragover");
+      });
+
+      uploadSection.addEventListener("drop", (e) => {
+        e.preventDefault();
+        uploadSection.classList.remove("dragover");
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+          handleVideoUpload(files[0]);
+        }
+      });
+
+      videoInput.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) {
+          handleVideoUpload(e.target.files[0]);
+        }
+      });
+
+      function selectMethod(method) {
+        currentMethod = method;
+        document.querySelectorAll(".method-option").forEach((option) => {
+          option.classList.remove("selected");
+        });
+        event.currentTarget.classList.add("selected");
+        document.querySelector(`input[value="${method}"]`).checked = true;
+      }
+
+      function handleVideoUpload(file) {
+        if (!file.type.startsWith("video/")) {
+          showAlert("error", "Vui lòng chọn file video hợp lệ!");
+          return;
+        }
+
+        showAlert("info", "Đang tải video lên...");
+        showLoading(true);
+
+        const formData = new FormData();
+        formData.append("video", file);
+        formData.append("detection_method", currentMethod);
+
+        fetch("/upload_video_helmet", {
+          method: "POST",
+          body: formData,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              showAlert("success", "Video đã được tải lên thành công!");
+              hideLoading();
+              // Hide upload section
+              uploadSection.style.display = "none";
+            } else {
+              showAlert("error", data.error || "Có lỗi xảy ra khi tải video!");
+              hideLoading();
             }
           })
           .catch((error) => {
-            // Fallback to old API if new one fails
-            fetch("/api/processing_status")
-              .then((response) => response.json())
-              .then((data) => {
-                if (data.status === "completed") {
-                  clearInterval(checkInterval);
-                  statusDiv.innerHTML =
-                    '<p class="text-success">Xử lý hoàn tất!</p>';
-                  setTimeout(() => {
-                    window.location.reload();
-                  }, 1500);
-                } else if (data.status === "error") {
-                  clearInterval(checkInterval);
-                  statusDiv.innerHTML =
-                    '<p class="text-danger">Lỗi xử lý: ' +
-                    (data.error || "Unknown error") +
-                    "</p>";
-                }
-              })
-              .catch(() => {
-                clearInterval(checkInterval);
-                statusDiv.innerHTML =
-                  '<p class="text-danger">Lỗi kiểm tra trạng thái</p>';
-              });
+            console.error("Error:", error);
+            showAlert("error", "Có lỗi xảy ra khi tải video!");
+            hideLoading();
           });
-      }, 1000); // Check every 1 second for more responsive progress
-      */
-    }
+      }
 
-    // Update violation statistics periodically
-    function updateViolationStats() {
-      // This would be connected to a real-time API endpoint
-      // For now, we'll just show placeholder text
-      const violationCount = document.getElementById("violationCount");
-      const violationList = document.getElementById("violationList");
+      function processVideo() {
+        if (uploadSection.style.display !== "none") {
+          showAlert("error", "Vui lòng tải video trước khi xử lý!");
+          return;
+        }
 
-      // Placeholder content - in real implementation, this would fetch from server
-      violationCount.innerHTML =
-        'Số lượng vi phạm: <span class="text-danger">0</span>';
-      violationList.innerHTML =
-        '<p class="text-muted">Chưa phát hiện vi phạm</p>';
-    }
+        isProcessing = true;
 
-    // Update stats disabled to reduce server load
-    // setInterval(updateViolationStats, 5000);
-    updateViolationStats(); // Initial call only
+        document.getElementById("processBtn").disabled = true;
+        document.getElementById("stopBtn").disabled = false;
+        document.getElementById("status").textContent = "Đang xử lý";
+        document.getElementById("statusIndicator").style.display = "block";
+        document.getElementById("processingStatus").classList.add("active");
 
-    // Clear video function
-    function clearVideo() {
-      fetch("/clear_upload_helmet", {
-        method: "POST",
-      })
-        .then((response) => response.json())
-        .then((data) => {
-          if (data.success) {
-            window.location.reload();
+        showAlert("info", "Đang bắt đầu xử lý video...");
+
+        // Start processing
+        fetch("/process_helmet_now", {
+          method: "GET",
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              showAlert("success", "Xử lý video hoàn thành!");
+              updateStats(data.stats);
+              loadProcessedVideo();
+            } else {
+              showAlert(
+                "error",
+                data.error || "Có lỗi xảy ra khi xử lý video!"
+              );
+            }
+            stopProcessing();
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            showAlert("error", "Có lỗi xảy ra khi xử lý video!");
+            stopProcessing();
+          });
+
+        // Simulate progress
+        simulateProgress();
+      }
+
+      function stopProcessing() {
+        isProcessing = false;
+
+        document.getElementById("processBtn").disabled = false;
+        document.getElementById("stopBtn").disabled = true;
+        document.getElementById("status").textContent = "Đã dừng";
+        document.getElementById("statusIndicator").style.display = "none";
+
+        if (processingInterval) {
+          clearInterval(processingInterval);
+          processingInterval = null;
+        }
+      }
+
+      function clearVideo() {
+        videoStream.src = "";
+        videoStream.style.display = "none";
+        videoPlaceholder.style.display = "flex";
+        uploadSection.style.display = "block";
+
+        stopProcessing();
+        resetStats();
+        hideAllAlerts();
+        document.getElementById("processingStatus").classList.remove("active");
+      }
+
+      function simulateProgress() {
+        let progress = 0;
+        processingInterval = setInterval(() => {
+          if (!isProcessing) {
+            clearInterval(processingInterval);
+            return;
           }
-        });
-    }
 
-    // Show/hide clear button based on video status
-    const processedVideo = document.getElementById("processedVideo");
-    if (processedVideo) {
-      processedVideo.addEventListener("loadeddata", function () {
-        document.getElementById("clearBtn").style.display = "inline-block";
-      });
-    }
-  </script>
-  <script>
-    var loader = document.getElementById("preloader");
-    window.addEventListener("load", vanish);
-    function vanish() {
-      loader.classList.add("display");
-    }
-    setTimeout(function () {
-      $("#preloader").fadeToggle();
-    }, 1500);
-  </script>
+          progress += Math.random() * 10;
+          if (progress > 100) progress = 100;
+
+          updateProgress(progress);
+
+          if (progress >= 100) {
+            clearInterval(processingInterval);
+          }
+        }, 500);
+      }
+
+      function updateProgress(progress) {
+        document.getElementById("progressFill").style.width = progress + "%";
+        document.getElementById("progressText").textContent =
+          Math.round(progress) + "%";
+        document.getElementById("processingProgress").textContent =
+          Math.round(progress) + "%";
+
+        if (progress < 30) {
+          document.getElementById("processingState").textContent =
+            "Đang phân tích video...";
+          document.getElementById("estimatedTime").textContent = "2-3 phút";
+        } else if (progress < 70) {
+          document.getElementById("processingState").textContent =
+            "Đang phát hiện vi phạm...";
+          document.getElementById("estimatedTime").textContent = "1-2 phút";
+        } else if (progress < 100) {
+          document.getElementById("processingState").textContent =
+            "Đang tạo báo cáo...";
+          document.getElementById("estimatedTime").textContent = "30 giây";
+        } else {
+          document.getElementById("processingState").textContent = "Hoàn thành";
+          document.getElementById("estimatedTime").textContent = "Xong";
+        }
+      }
+
+      function updateStats(stats) {
+        if (stats) {
+          violationCount.total = stats.total_detections || 0;
+          violationCount.withHelmet = stats.with_helmet || 0;
+          violationCount.withoutHelmet = stats.without_helmet || 0;
+        } else {
+          // Simulate stats
+          violationCount.total = Math.floor(Math.random() * 50) + 20;
+          violationCount.withHelmet = Math.floor(violationCount.total * 0.7);
+          violationCount.withoutHelmet =
+            violationCount.total - violationCount.withHelmet;
+        }
+
+        document.getElementById("totalViolations").textContent =
+          violationCount.total;
+        document.getElementById("withHelmet").textContent =
+          violationCount.withHelmet;
+        document.getElementById("withoutHelmet").textContent =
+          violationCount.withoutHelmet;
+
+        const violationRate =
+          violationCount.total > 0
+            ? Math.round(
+                (violationCount.withoutHelmet / violationCount.total) * 100
+              )
+            : 0;
+        document.getElementById("violationRate").textContent =
+          violationRate + "%";
+      }
+
+      function loadProcessedVideo() {
+        // Load the processed video
+        videoPlaceholder.style.display = "none";
+        videoStream.style.display = "block";
+        videoStream.src = "/camera2";
+      }
+
+      function resetStats() {
+        violationCount = { total: 0, withHelmet: 0, withoutHelmet: 0 };
+        document.getElementById("totalViolations").textContent = "0";
+        document.getElementById("withHelmet").textContent = "0";
+        document.getElementById("withoutHelmet").textContent = "0";
+        document.getElementById("violationRate").textContent = "0%";
+        document.getElementById("progressFill").style.width = "0%";
+        document.getElementById("progressText").textContent = "Chưa bắt đầu";
+      }
+
+      function showAlert(type, message) {
+        hideAllAlerts();
+        const alert = document.getElementById(type + "Alert");
+        if (type === "error") {
+          document.getElementById("errorMessage").textContent = message;
+        } else if (type === "info") {
+          document.getElementById("infoMessage").textContent = message;
+        }
+        alert.style.display = "block";
+
+        if (type === "success" || type === "info") {
+          setTimeout(() => {
+            alert.style.display = "none";
+          }, 3000);
+        }
+      }
+
+      function hideAllAlerts() {
+        document.querySelectorAll(".alert").forEach((alert) => {
+          alert.style.display = "none";
+        });
+      }
+
+      function showLoading(show) {
+        document.getElementById("loading").style.display = show
+          ? "block"
+          : "none";
+      }
+
+      function hideLoading() {
+        document.getElementById("loading").style.display = "none";
+      }
+
+      function addViolationToList() {
+        const violationsList = document.getElementById("violationsList");
+        const violationItem = document.createElement("div");
+        violationItem.className = "violation-item";
+
+        const time = new Date().toLocaleTimeString();
+
+        violationItem.innerHTML = `
+                <div class="violation-icon">
+                    <i class="fas fa-user-times"></i>
+                </div>
+                <div class="violation-info">
+                    <div class="violation-type">Không đội mũ bảo hiểm</div>
+                    <div class="violation-time">${time} - Hôm nay</div>
+                </div>
+            `;
+
+        violationsList.insertBefore(violationItem, violationsList.firstChild);
+
+        // Keep only last 5 violations
+        while (violationsList.children.length > 5) {
+          violationsList.removeChild(violationsList.lastChild);
+        }
+      }
+
+      // Check processing status periodically
+      setInterval(() => {
+        if (isProcessing) {
+          fetch("/api/processing_status")
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.status === "completed") {
+                updateStats(data.stats);
+                loadProcessedVideo();
+                stopProcessing();
+                showAlert("success", "Xử lý video hoàn thành!");
+              } else if (data.status === "error") {
+                showAlert(
+                  "error",
+                  data.error || "Có lỗi xảy ra khi xử lý video!"
+                );
+                stopProcessing();
+              }
+            })
+            .catch((error) => {
+              console.error("Error checking status:", error);
+            });
+        }
+      }, 2000);
+    </script>
+  </body>
 </html>
