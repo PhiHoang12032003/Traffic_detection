@@ -11,6 +11,11 @@ def imageMotorViolate(frame, r1, r2, c1, c2, stt):
     # Cắt vùng từ khung hình
     cropped_region = frame[r1:r2, c1:c2]
     nameFile = str(stt) + '.jpg'
+    
+    # Đảm bảo thư mục tồn tại
+    import os
+    os.makedirs("data_xe_may_vi_pham", exist_ok=True)
+    
     data_xe_may_vi_pham = "data_xe_may_vi_pham/" + nameFile
     # Lưu vùng đã cắt vào tệp tin
     cv2.imwrite(data_xe_may_vi_pham, cropped_region)
@@ -20,6 +25,11 @@ def imageCTBViolate(frame, r1, r2, c1, c2, stt):
     # Cắt vùng từ khung hình
     cropped_region = frame[r1:r2, c1:c2]
     nameFile = str(stt) + '.jpg'
+    
+    # Đảm bảo thư mục tồn tại
+    import os
+    os.makedirs("data_oto_vi_pham", exist_ok=True)
+    
     data_xe_may_vi_pham = "data_oto_vi_pham/" + nameFile
     # Lưu vùng đã cắt vào tệp tin
     cv2.imwrite(data_xe_may_vi_pham, cropped_region)
@@ -29,6 +39,11 @@ def imageViolateHelmet(frame, r1, r2, c1, c2, stt):
     # Cắt vùng từ khung hình
     cropped_region = frame[r1:r2, c1:c2]
     nameFile = str(stt) + '.jpg'
+    
+    # Đảm bảo thư mục tồn tại
+    import os
+    os.makedirs("data_xe_vp_bh", exist_ok=True)
+    
     data_xe_may_vi_pham = "data_xe_vp_bh/" + nameFile
     # Lưu vùng đã cắt vào tệp tin
     cv2.imwrite(data_xe_may_vi_pham, cropped_region)

@@ -2,6 +2,7 @@ import datetime
 import webbrowser
 import cv2
 import tempfile
+import numpy as np
 from PIL import Image
 from ultralytics import YOLO
 
@@ -17,6 +18,7 @@ from testLane import *
 # from testRedLight import video_detect_red_light  # Removed - using new red_light_main system
 from red_light_main import process_red_light_video_complete, generate_frames_red_light_new
 import createBB
+from utils.helmet_pdf_utils import create_helmet_pdf_report, get_helmet_violation_info
 from werkzeug.utils import secure_filename
 import os
 
@@ -341,19 +343,66 @@ def generate_frames(path_x):
 
 
 def generate_frames_helmet(path_x):
-    yolo_output = video_detect_helmet_with_plate(path_x)
+    """Generate frames for helmet detection streaming"""
     try:
-        for detection_ in yolo_output:
-            ref, buffer = cv2.imencode('.jpg', detection_)
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-    except GeneratorExit:
-        # Clean up when client disconnects
-        pass
-    finally:
-        # Ensure video is properly closed
+        cap = cv2.VideoCapture(path_x)
+        if not cap.isOpened():
+            print(f"Error: Could not open video {path_x}")
+            return
+        
+        # Load YOLO model for helmet detection
+        model = YOLO('model_helmet/best_helmet_end.pt')
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            # Run helmet detection
+            results = model(frame)
+            
+            # Draw detections on frame
+            for r in results:
+                boxes = r.boxes
+                if boxes is not None:
+                    for box in boxes:
+                        cls = int(box.cls[0])
+                        conf = float(box.conf[0])
+                        
+                        if conf > 0.5:  # Confidence threshold
+                            x1, y1, x2, y2 = map(int, box.xyxy[0])
+                            
+                            # Draw bounding box
+                            if cls == 0:  # No helmet
+                                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                                cv2.putText(frame, f"No Helmet: {conf:.2f}", (x1, y1-10), 
+                                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                            else:  # Helmet detected
+                                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                cv2.putText(frame, f"Helmet: {conf:.2f}", (x1, y1-10), 
+                                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            
+            # Encode frame as JPEG
+            ret, buffer = cv2.imencode('.jpg', frame)
+            if ret:
+                frame_bytes = buffer.tobytes()
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        
+        cap.release()
         cv2.destroyAllWindows()
+        
+    except Exception as e:
+        print(f"Error in generate_frames_helmet: {e}")
+        # Return a simple error frame
+        error_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        cv2.putText(error_frame, "Error loading video", (50, 240), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        ret, buffer = cv2.imencode('.jpg', error_frame)
+        if ret:
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
 
 @app.route("/")
@@ -394,18 +443,24 @@ def video():
 
 @app.route("/camera2")
 def video_2():
-    # Check if processed video is available
-    processing_info = session.get('helmet_processing', {})
+    # Check if there's an uploaded video for helmet detection
+    uploaded_video = session.get('uploaded_video_helmet', None)
+    if not uploaded_video:
+        print("DEBUG camera2: No uploaded helmet video in session")
+        return Response(generate_placeholder_stream(),
+                        mimetype='multipart/x-mixed-replace; boundary=frame')
     
-    # If processing is complete, serve the processed video
-    if processing_info.get('status') == 'completed':
-        processed_video = processing_info.get('output_path')
-        if processed_video and os.path.exists(processed_video):
-            # Serve the processed video file directly
-            return send_file(processed_video, mimetype='video/mp4')
+    # Check if file exists
+    if not os.path.exists(uploaded_video):
+        print(f"DEBUG camera2: File {uploaded_video} does not exist")
+        return Response(generate_placeholder_stream(),
+                        mimetype='multipart/x-mixed-replace; boundary=frame')
     
-    # Otherwise show no video message
-    return "No processed video available", 400
+    print(f"DEBUG camera2: Starting helmet video stream for {uploaded_video}")
+    
+    # Use helmet detection streaming
+    return Response(generate_frames_helmet(uploaded_video),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
 # Helper function to check allowed file
@@ -607,6 +662,9 @@ def upload_video_helmet():
             'output_path': output_path
         }
         
+        # Store uploaded video path for streaming
+        session['uploaded_video_helmet'] = filepath
+        
         # For demonstration, process synchronously
         # In production, use a task queue like Celery for async processing
         session['helmet_processing']['message'] = 'Processing video, please wait...'
@@ -645,6 +703,8 @@ def process_helmet_now():
         return jsonify({'error': 'No pending process'}), 400
     
     try:
+        print("🚀 Starting helmet video processing...")
+        
         # Process the video using selected detection method
         use_advanced = pending.get('use_advanced', False)
         result_path, stats = process_helmet_video_complete(
@@ -652,6 +712,8 @@ def process_helmet_now():
             pending['output'],
             use_improved_detection=use_advanced
         )
+        
+        print(f"✅ Helmet video processing completed! Output: {result_path}")
         
         # Update session
         session['helmet_processing']['status'] = 'completed'
@@ -668,6 +730,7 @@ def process_helmet_now():
             'message': 'Processing completed!'
         })
     except Exception as e:
+        print(f"❌ Error in helmet processing: {str(e)}")
         session['helmet_processing']['status'] = 'error'
         session['helmet_processing']['error'] = str(e)
         return jsonify({'error': str(e)}), 500
@@ -980,6 +1043,34 @@ def generate_frames_red_light_advanced(path_x):
                                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
                                     cv2.putText(frame, "VI PHAM!", (x1, y1 - 10), 
                                               cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                                    
+                                    # Tạo PDF biên bản phạt cho vi phạm đèn đỏ
+                                    try:
+                                        import createBB_red_light
+                                        from PIL import Image
+                                        import tempfile
+                                        import os
+                                        
+                                        # Lưu ảnh vi phạm
+                                        os.makedirs("data_vuot_den_do", exist_ok=True)
+                                        cv2.imwrite(f"data_vuot_den_do/{violation_count}.jpg", frame)
+                                        
+                                        # Tạo PDF biên bản phạt
+                                        stt_BB_red_light = f'BienBanNopPhatVuotDenDo/{violation_count}.pdf'
+                                        frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                                        temp_image = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+                                        frame_pil.save(temp_image.name)
+                                        
+                                        # Cập nhật thông tin biên bản với biển số xe
+                                        examBB = createBB_red_light.infoObject()
+                                        if license_text:
+                                            examBB['license_plate'] = license_text
+                                        createBB_red_light.bienBanNopPhat(examBB, temp_image.name,
+                                                                         f"data_vuot_den_do/{violation_count}.jpg", stt_BB_red_light)
+                                        temp_image.close()
+                                        print(f"Created PDF violation report: {stt_BB_red_light}")
+                                    except Exception as e:
+                                        print(f"Error creating PDF for violation {violation_count}: {e}")
                                 else:
                                     # Normal vehicle
                                     color = (0, 255, 0) if current_light != "red" else (255, 255, 0)
@@ -1050,10 +1141,10 @@ def generate_frames_red_light_advanced(path_x):
                 status_color = (0, 0, 255) if current_light == "red" else (0, 255, 0) if current_light == "green" else (0, 255, 255)
                 cv2.putText(frame, f"Den giao thong: {current_light.upper()}", (20, 35),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
-                cv2.putText(frame, f"Vi pham: {violation_count}", (20, 60),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-                cv2.putText(frame, f"Frame: {frame_count}", (20, 85),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                # cv2.putText(frame, f"Vi pham: {violation_count}", (20, 60),
+                #            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                # cv2.putText(frame, f"Frame: {frame_count}", (20, 85),
+                #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
                 cv2.putText(frame, "LIVE STREAM", (20, 105),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 
@@ -1121,6 +1212,18 @@ def clear_upload_helmet():
         if os.path.exists(filepath):
             os.remove(filepath)
         session.pop('uploaded_video_helmet', None)
+    return jsonify({'success': True})
+
+
+# Clear uploaded video for lane detection
+@app.route("/clear_upload_lane", methods=['POST'])
+def clear_upload_lane():
+    if 'uploaded_video_lane' in session:
+        # Delete file if exists
+        filepath = session['uploaded_video_lane']
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        session.pop('uploaded_video_lane', None)
     return jsonify({'success': True})
 
 

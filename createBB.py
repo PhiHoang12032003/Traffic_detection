@@ -28,7 +28,7 @@ def bienBanNopPhat(info, image_origin, image_violate, output_file_path):
 
     # Chèn ảnh vi phạm
     c.drawString(50, 570,
-                 "Hinh Anh Vi Pham Tu He Thong Giam Sat Giao Thong TP DA NANG( {}".format(info['date']) + " )")
+                 "Hinh Anh Vi Pham Tu He Thong Giam Sat Giao Thong TP Ho Chi Minh ( {}".format(info['date']) + " )")
     c.drawImage(image_origin, 50, 300, width=3.5 * inch, height=3.5 * inch)
     c.drawImage(image_violate, 350, 300, width=3 * inch, height=3.5 * inch)
 
@@ -58,7 +58,7 @@ def infoObject():
         'name': '....................................................................................................................................',
         'address': '....................................................................................................................',
         'date': str(ngay_gio_dinh_dang),
-        'violation': 'DI KHONG DUNG LAN XE QUI DINH TAI DOAN DUONG NGUYEN TRI PHUONG',
+        'violation': 'DI KHONG DUNG LAN XE QUI DINH TAI DOAN DUONG LY THUONG KIET',
         'violationOther': '....................................................................................................................',
 
         'fine': ".....................................................................",

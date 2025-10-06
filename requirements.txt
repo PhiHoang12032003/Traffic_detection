@@ -16,8 +16,8 @@ numpy>=1.21.0
 
 # Computer Vision and AI ----------------------
 ultralytics>=8.0.0
-cvzone
-deep-sort-realtime
+# cvzone  # Commented out - has issues on Windows
+# deep-sort-realtime  # Commented out - may have compatibility issues
 
 # OCR and Text Detection ----------------------
 easyocr>=1.7.0

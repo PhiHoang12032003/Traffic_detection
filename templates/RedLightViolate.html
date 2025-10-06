@@ -630,7 +630,7 @@
                 class="btn btn-warning"
                 id="processBtn"
                 onclick="processVideo()"
-                style="display: none;"
+                style="display: none"
               >
                 <i class="fas fa-cogs"></i>
                 Xuất Video Phân Tích
@@ -855,21 +855,24 @@
         showAlert("info", "Đang xử lý video và xuất kết quả phân tích...");
         document.getElementById("processBtn").disabled = true;
 
-        fetch('/process_red_light_video', {
-          method: 'POST',
+        fetch("/process_red_light_video", {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-          }
+            "Content-Type": "application/json",
+          },
         })
-        .then(response => response.json())
-        .then(data => {
-          if (data.success) {
-            showAlert("success", `Xử lý hoàn tất! Phát hiện ${data.violation_count} vi phạm.`);
-            
-            // Tạo các nút download
-            const downloadSection = document.createElement('div');
-            downloadSection.className = 'download-section';
-            downloadSection.innerHTML = `
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              showAlert(
+                "success",
+                `Xử lý hoàn tất! Phát hiện ${data.violation_count} vi phạm.`
+              );
+
+              // Tạo các nút download
+              const downloadSection = document.createElement("div");
+              downloadSection.className = "download-section";
+              downloadSection.innerHTML = `
               <h4>Kết quả phân tích:</h4>
               <div class="download-buttons">
                 <a href="/download_processed_video" class="btn btn-primary" download>
@@ -880,22 +883,21 @@
                 </a>
               </div>
             `;
-            
-            // Thêm vào trang
-            const container = document.querySelector('.container');
-            container.appendChild(downloadSection);
-            
-          } else {
-            showAlert("error", `Lỗi: ${data.error}`);
-          }
-        })
-        .catch(error => {
-          console.error('Error:', error);
-          showAlert("error", "Có lỗi xảy ra khi xử lý video!");
-        })
-        .finally(() => {
-          document.getElementById("processBtn").disabled = false;
-        });
+
+              // Thêm vào trang
+              const container = document.querySelector(".container");
+              container.appendChild(downloadSection);
+            } else {
+              showAlert("error", `Lỗi: ${data.error}`);
+            }
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            showAlert("error", "Có lỗi xảy ra khi xử lý video!");
+          })
+          .finally(() => {
+            document.getElementById("processBtn").disabled = false;
+          });
       }
 
       function stopDetection() {
@@ -913,6 +915,23 @@
       }
 
       function clearVideo() {
+        // Call API to delete video file
+        fetch("/clear_upload", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              console.log("Video deleted successfully");
+            }
+          })
+          .catch((error) => {
+            console.error("Error deleting video:", error);
+          });
+
         videoStream.src = "";
         videoStream.style.display = "none";
         videoPlaceholder.style.display = "flex";

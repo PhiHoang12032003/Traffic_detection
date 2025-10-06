@@ -1,7 +1,9 @@
 import cv2
 import easyocr
 import os
+import tempfile
 from datetime import datetime
+from PIL import Image
 
 from threads.OCR_thread import OCR_thread
 from threads.frame_producer import FrameProducer
@@ -9,6 +11,7 @@ from threads.processor_thread import FrameProcessor
 
 from threads.pipeline import Pipeline
 import pandas as pd
+import createBB_red_light
 
 
 def process_red_light_video_complete(video_path, output_dir="output"):
@@ -46,6 +49,8 @@ def process_red_light_video_complete(video_path, output_dir="output"):
     plates_text = []
     violation_info = []
     frame_count = 0
+    violation_count = 0
+    examBB = createBB_red_light.infoObject()
     
     while True:
         ret, frame = processed_pipeline.get_message()
@@ -75,12 +80,37 @@ def process_red_light_video_complete(video_path, output_dir="output"):
             #add text to list
             plates_text.append(violating_plate_text)
             violation_info.append(box_info)
+            
+            # Tạo PDF biên bản phạt cho vi phạm đèn đỏ
+            violation_count += 1
+            try:
+                # Lưu ảnh vi phạm
+                height, width = frame.shape[:2]
+                # Lưu ảnh vi phạm đèn đỏ
+                import os
+                os.makedirs("data_vuot_den_do", exist_ok=True)
+                cv2.imwrite(f"data_vuot_den_do/{violation_count}.jpg", frame)
+                
+                # Tạo PDF biên bản phạt
+                stt_BB_red_light = f'BienBanNopPhatVuotDenDo/{violation_count}.pdf'
+                frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                temp_image = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+                frame_pil.save(temp_image.name)
+                
+                # Cập nhật thông tin biên bản với biển số xe
+                examBB['license_plate'] = violating_plate_text
+                createBB_red_light.bienBanNopPhat(examBB, temp_image.name,
+                                                 f"data_vuot_den_do/{violation_count}.jpg", stt_BB_red_light)
+                temp_image.close()
+                print(f"Created PDF violation report: {stt_BB_red_light}")
+            except Exception as e:
+                print(f"Error creating PDF for violation {violation_count}: {e}")
         
         # Hiển thị tất cả vi phạm (sửa từ > 1 thành > 0)
         if len(plates_text) > 0:
             for i, text in enumerate(plates_text):
                 cv2.rectangle(frame, (int(700 * t2.scale_factor), int(40 * t2.scale_factor + i*70 )),(int(1400 * t2.scale_factor), int(120 * t2.scale_factor + i*70 )), (0, 0, 0), -1)
-                cv2.putText(frame, f"violation detected -> {text}", (int(720*t2.scale_factor),int(100*t2.scale_factor+(i*70))), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0,0,255), thickness=2)
+                # cv2.putText(frame, f"violation detected -> {text}", (int(720*t2.scale_factor),int(100*t2.scale_factor+(i*70))), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0,0,255), thickness=2)
 
         # Write frame to video
         if video_writer is not None:
@@ -164,7 +194,7 @@ def generate_frames_red_light_new(video_path):
             if len(plates_text) > 0:
                 for i, text in enumerate(plates_text):
                     cv2.rectangle(frame, (int(700 * t2.scale_factor), int(40 * t2.scale_factor + i*70 )),(int(1400 * t2.scale_factor), int(120 * t2.scale_factor + i*70 )), (0, 0, 0), -1)
-                    cv2.putText(frame, f"violation detected -> {text}", (int(720*t2.scale_factor),int(100*t2.scale_factor+(i*70))), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0,0,255), thickness=2)
+                    # cv2.putText(frame, f"violation detected -> {text}", (int(720*t2.scale_factor),int(100*t2.scale_factor+(i*70))), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0,0,255), thickness=2)
 
             # Encode frame as JPEG
             ret, buffer = cv2.imencode('.jpg', frame)

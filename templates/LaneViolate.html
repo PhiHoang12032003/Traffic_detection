@@ -734,6 +734,23 @@
       }
 
       function clearVideo() {
+        // Call API to delete video file
+        fetch("/clear_upload_lane", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              console.log("Video deleted successfully");
+            }
+          })
+          .catch((error) => {
+            console.error("Error deleting video:", error);
+          });
+
         videoStream.src = "";
         videoStream.style.display = "none";
         videoPlaceholder.style.display = "flex";
