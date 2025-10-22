@@ -4,6 +4,9 @@ import cv2
 import tempfile
 from PIL import Image
 from ultralytics import YOLO
+import pandas as pd
+import json
+import time
 
 from flask import Flask, jsonify, url_for, request, session, send_file
 from flask import render_template, Response
@@ -23,6 +26,23 @@ import os
 app = Flask(__name__, static_folder='static')
 CORS(app)
 app.secret_key = 'your-secret-key-here-change-in-production'
+
+# Global variables for lane detection control
+lane_detection_active = False
+lane_detection_thread = None
+lane_detection_data = {
+    'violations': [],
+    'motor_violations': 0,
+    'car_violations': 0,
+    'start_time': None,
+    'video_writer': None,
+    'output_path': None,
+    'timestamp': None,
+    'tracked_vehicles': {},  # Tracking để tránh duplicate
+    'violation_cooldown': {},  # Cooldown để tránh spam detection
+    'violation_frames': [],  # Lưu frames vi phạm để xuất video
+    'frame_count': 0
+}
 
 # Configure upload
 UPLOAD_FOLDER = 'uploads'
@@ -115,7 +135,331 @@ def call_route(cls):
     # return redirect(url_for('create', cls=cls))
 
 
+def draw_text(img, text, pos=(0, 0), font_scale=0.7, text_color=(255, 255, 255), text_color_bg=(0, 0, 0)):
+    """Vẽ chữ có nền để dễ đọc hơn."""
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    thickness = 2
+    x, y = pos
+    text_size, _ = cv2.getTextSize(text, font, font_scale, thickness)
+    text_w, text_h = text_size
+    # Vẽ hình chữ nhật làm nền
+    cv2.rectangle(img, pos, (x + text_w + 5, y + text_h + 5), text_color_bg, -1)
+    # Vẽ chữ lên trên
+    cv2.putText(img, text, (x, y + text_h + 3), font, font_scale, text_color, thickness)
+
+
+def video_detection_web(path_x=""):
+    """Video detection có thể điều khiển từ web với xuất kết quả"""
+    global lane_detection_active, lane_detection_data
+    
+    try:
+        from performance_config import PerformanceConfig, auto_detect_performance
+        
+        # Khởi tạo performance config
+        performance_config = auto_detect_performance()
+        
+        cap = cv2.VideoCapture(path_x)
+        if not cap.isOpened():
+            print("❌ Không thể mở video")
+            return
+            
+        model = YOLO('best_new/vehicle.pt')
+        examBB = createBB.infoObject()
+        
+        # Get video properties
+        original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        original_fps = int(cap.get(cv2.CAP_PROP_FPS))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        # Calculate new dimensions
+        new_width, new_height = performance_config.get_video_dimensions(original_width, original_height)
+        
+        # Initialize video writer
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = "output"
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, f"lane_violations_{timestamp}.mp4")
+        
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_path, fourcc, original_fps, (new_width, new_height))
+        
+        # Update global data
+        lane_detection_data.update({
+            'start_time': time.time(),
+            'video_writer': out,
+            'output_path': output_path,
+            'timestamp': timestamp,
+            'original_fps': original_fps,
+            'output_size': (new_width, new_height),
+            'violations': [],
+            'motor_violations': 0,
+            'car_violations': 0,
+            'tracked_vehicles': {},
+            'violation_cooldown': {},
+            'violation_frames': [],  # Reset violation frames
+            'frame_count': 0
+        })
+        
+        frame_count = 0
+        processed_count = 0
+        
+        print(f"🚀 Bắt đầu phân tích web - Performance: {performance_config.mode}")
+        
+        while lane_detection_active and cap.isOpened():
+            success, frame = cap.read()
+            if not success:
+                break
+
+            frame_count += 1
+
+            # Resize frame immediately so output video uses consistent dimensions
+            frame = cv2.resize(frame, (new_width, new_height))
+            h, w, _ = frame.shape
+
+            # Update global frame count for status/debug
+            lane_detection_data['frame_count'] = frame_count
+
+            # Vẽ UI elements cơ bản cho mọi frame để tránh chớp chớp
+            
+            # Draw ROI và lanes cho mọi frame (consistent UI)
+            roi_start = (0, int(0.2 * h))
+            roi_end = (w, int(0.8 * h))
+            cv2.rectangle(frame, roi_start, roi_end, (255, 0, 0), 2)
+            
+            # Làn xe máy: 0% - 50% width
+            start_line_motor = (0, int(0.2 * h))
+            end_line_motor = (int(0.50 * w), int(0.8 * h))
+            cv2.rectangle(frame, start_line_motor, end_line_motor, (255, 0, 255), 2)
+            draw_text(frame, "LANE XE MAY", (10, int(0.25 * h)), text_color=(255, 255, 255), text_color_bg=(255, 0, 255))
+            
+            # Làn ô tô: 50% - 100% width  
+            start_line_car = (int(0.50 * w), int(0.2 * h))
+            end_line_car = (w, int(0.8 * h))
+            cv2.rectangle(frame, start_line_car, end_line_car, (0, 255, 0), 2)
+            draw_text(frame, "LANE O TO", (int(0.52 * w), int(0.25 * h)), text_color=(255, 255, 255), text_color_bg=(0, 255, 0))
+            
+            # If this frame should be skipped for heavy processing, still write and stream
+            # the frame with basic UI so the exported video keeps full length/duration.
+            if not performance_config.should_process_frame(frame_count):
+                # Vẽ thống kê cơ bản cho skipped frame
+                draw_text(frame, f"XE MÁY VI PHẠM: {lane_detection_data['motor_violations']}", 
+                         (10, 30), text_color=(255, 255, 255), text_color_bg=(255, 0, 0))
+                draw_text(frame, f"Ô TÔ VI PHẠM: {lane_detection_data['car_violations']}", 
+                         (10, 60), text_color=(255, 255, 255), text_color_bg=(0, 0, 255))
+                draw_text(frame, f"Frame: {frame_count} (SKIPPED)", (10, 90), text_color_bg=(128,128,128))
+                
+                try:
+                    out.write(frame)
+                except Exception:
+                    pass
+
+                # Yield the frame with consistent UI for streaming
+                yield frame
+                continue
+
+            processed_count += 1
+            
+            # Run YOLO cho processed frames
+            results = model(frame, 
+                          conf=performance_config.yolo_conf_threshold,
+                          imgsz=performance_config.yolo_img_size,
+                          verbose=False)
+            
+            # Process detections
+            for result in results:
+                boxes = result.boxes
+                if boxes is not None:
+                    for box in boxes:
+                        try:
+                            x1, y1, x2, y2 = map(int, box.xyxy[0])
+                            cls = int(box.cls[0])
+                            conf = float(box.conf[0])
+                            
+                            center_x = (x1 + x2) // 2
+                            center_y = (y1 + y2) // 2
+                            
+                            # Chỉ xử lý trong ROI
+                            if not (roi_start[1] < center_y < roi_end[1]):
+                                continue
+                            
+                            # Vẽ bounding box
+                            label = f"{result.names[cls]} {conf:.2f}"
+                            color = (0, 255, 0) if cls == 1 else (0, 255, 255)
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                            draw_text(frame, label, pos=(x1, y1 - 20), font_scale=0.5, text_color_bg=color)
+                            
+                            # LOGIC VI PHẠM SIÊU CHÍNH XÁC - CHỈ ĐẾM ĐÚNG 1 LẦN
+                            violation_detected = False
+                            violation_type = ""
+                            
+                            # Ranh giới làn đường: chính xác 50%
+                            lane_boundary = w // 2
+                            
+                            # Tạo unique key dựa trên vùng SIÊU LỚN để đảm bảo 1 xe = 1 key
+                            # Grid size = 400 pixels (rất lớn) để tránh duplicate key
+                            grid_size = 400  
+                            grid_x = center_x // grid_size
+                            grid_y = center_y // grid_size
+                            
+                            # Debug info (comment out for less noise)
+                            # print(f"🚗 Vehicle detected: cls={cls}, center=({center_x},{center_y}), grid=({grid_x},{grid_y}), lane_boundary={lane_boundary}")
+                            
+                            # CASE 1: XE MÁY (cls=1) VI PHẠM VÀO LÀN Ô TÔ (>= 50%)
+                            if cls == 1 and center_x >= lane_boundary:
+                                # Tạo key duy nhất cho xe này tại vị trí này
+                                violation_key = f"MOTOR_{grid_x}_{grid_y}_{cls}"
+                                
+                                # Log để debug (comment out for less noise)
+                                # print(f"🏍️ Motor check: center_x={center_x} >= boundary={lane_boundary}, key={violation_key}")
+                                
+                                # Chỉ đếm nếu key chưa tồn tại
+                                if violation_key not in lane_detection_data['violation_cooldown']:
+                                    # VI PHẠM MỚI - INCREMENT COUNTER
+                                    old_count = lane_detection_data['motor_violations']
+                                    lane_detection_data['motor_violations'] += 1
+                                    new_count = lane_detection_data['motor_violations']
+                                    
+                                    # Mark key để tránh recount
+                                    lane_detection_data['violation_cooldown'][violation_key] = frame_count
+                                    violation_detected = True
+                                    violation_type = "xe_may_vi_pham_lan_oto"
+                                    
+                                    # Visual feedback
+                                    draw_text(frame, "VI PHAM XE MAY!", (x1, y1 - 40), 
+                                            text_color=(255, 255, 255), text_color_bg=(255, 0, 0))
+                                    
+                                    # CRITICAL LOG
+                                    print(f"🚨🚨 [MOTOR INCREMENT] {old_count} -> {new_count} at frame {frame_count}")
+                                    print(f"🚨🚨 [KEY] {violation_key} added to cooldown")
+                                    print(f"�🚨 [TOTALS] Motor={new_count}, Car={lane_detection_data['car_violations']}")
+                                else:
+                                    # Key đã tồn tại - KHÔNG increment
+                                    draw_text(frame, "ĐÃ GHI NHẬN", (x1, y1 - 40), 
+                                            text_color=(255, 255, 0), text_color_bg=(128, 128, 128))
+                                    print(f"⏭️ Motor skip: key {violation_key} already exists")
+                            
+                            # CASE 2: Ô TÔ (cls=0,3,4) VI PHẠM VÀO LÀN XE MÁY (< 50%)
+                            elif cls in [0, 3, 4] and center_x < lane_boundary:
+                                violation_key = f"CAR_{grid_x}_{grid_y}_{cls}"
+                                
+                                # Log để debug (comment out for less noise)
+                                # print(f"🚗 Car check: center_x={center_x} < boundary={lane_boundary}, key={violation_key}")
+                                
+                                # Kiểm tra đã vi phạm chưa
+                                if violation_key not in lane_detection_data['violation_cooldown']:
+                                    # VI PHẠM MỚI - INCREMENT COUNTER
+                                    old_count = lane_detection_data['car_violations']
+                                    lane_detection_data['car_violations'] += 1
+                                    new_count = lane_detection_data['car_violations']
+                                    
+                                    # Mark key để tránh recount
+                                    lane_detection_data['violation_cooldown'][violation_key] = frame_count
+                                    violation_detected = True
+                                    violation_type = "oto_vi_pham_lan_xe_may"
+                                    
+                                    # Visual feedback
+                                    draw_text(frame, "VI PHAM Ô TÔ!", (x1, y1 - 40),
+                                            text_color=(255, 255, 255), text_color_bg=(255, 0, 0))
+                                    
+                                    # CRITICAL LOG
+                                    print(f"🚨🚨 [CAR INCREMENT] {old_count} -> {new_count} at frame {frame_count}")
+                                    print(f"🚨🚨 [KEY] {violation_key} added to cooldown")
+                                    print(f"🚨🚨 [TOTALS] Motor={lane_detection_data['motor_violations']}, Car={new_count}")
+                                    
+                                    # Log chi tiết  
+                                    print(f"� [CAR] Vi phạm #{lane_detection_data['car_violations']} - Frame {frame_count} - Key: {violation_key}")
+                                    print(f"📊 Current totals: Motor={lane_detection_data['motor_violations']}, Car={lane_detection_data['car_violations']}")
+                                else:
+                                    # Đã ghi nhận - không tăng counter
+                                    draw_text(frame, "ĐÃ GHI NHẬN", (x1, y1 - 40),
+                                            text_color=(255, 255, 0), text_color_bg=(128, 128, 128))
+                            
+                            # Lưu thông tin vi phạm nếu có vi phạm mới
+                            if violation_detected:
+                                violation_info = {
+                                    'violation_id': len(lane_detection_data['violations']) + 1,
+                                    'type': violation_type,
+                                    'frame_number': frame_count,
+                                    'time_seconds': frame_count / original_fps,
+                                    'time_formatted': f"{int((frame_count / original_fps) // 60):02d}:{int((frame_count / original_fps) % 60):02d}",
+                                    'confidence': conf,
+                                    'bbox': [x1, y1, x2, y2],
+                                    'center': [center_x, center_y],
+                                    'vehicle_class': result.names[cls],
+                                    'detected_at': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                }
+                                lane_detection_data['violations'].append(violation_info)
+                                
+                                # Lưu frame vi phạm để xuất video
+                                lane_detection_data['violation_frames'].append({
+                                    'frame': frame.copy(),
+                                    'frame_number': frame_count,
+                                    'violation_type': violation_type
+                                })
+                                
+                                print(f"📊 TOTAL VIOLATIONS: Motor={lane_detection_data['motor_violations']}, Car={lane_detection_data['car_violations']}")
+                                
+                                
+                        except Exception as e:
+                            print(f"Lỗi xử lý detection: {e}")
+                            continue
+            
+            # Debug logging mỗi 60 frames để track counter changes (reduced frequency)
+            if frame_count % 60 == 0:
+                active_keys = len(lane_detection_data['violation_cooldown'])
+                print(f"🔍 [FRAME {frame_count}] Status: Motor={lane_detection_data['motor_violations']}, Car={lane_detection_data['car_violations']}, Cooldowns={active_keys}")
+                # if active_keys > 0:
+                #     print(f"   Keys: {list(lane_detection_data['violation_cooldown'].keys())[:3]}")  # Show first 3 keys only
+            
+            # Làm sạch violation_cooldown mỗi 150 frames để tránh memory leak  
+            if frame_count % 150 == 0:
+                # Xóa tracked vehicles cũ hơn 5 giây (150 frames) 
+                expired_keys = [k for k, v in lane_detection_data['violation_cooldown'].items() 
+                              if frame_count - v > 150]
+                for k in expired_keys:
+                    del lane_detection_data['violation_cooldown'][k]
+                    
+                if expired_keys:
+                    print(f"🧹 Cleaned {len(expired_keys)} old tracking entries at frame {frame_count}")
+                    print(f"🔢 After cleanup: Motor={lane_detection_data['motor_violations']}, Car={lane_detection_data['car_violations']}")
+            
+            # Hiển thị thống kê trực quan với màu sắc rõ ràng
+            draw_text(frame, f"XE MÁY VI PHẠM: {lane_detection_data['motor_violations']}", 
+                     (10, 30), text_color=(255, 255, 255), text_color_bg=(255, 0, 0))
+            draw_text(frame, f"Ô TÔ VI PHẠM: {lane_detection_data['car_violations']}", 
+                     (10, 60), text_color=(255, 255, 255), text_color_bg=(0, 0, 255))
+            draw_text(frame, f"Frame: {frame_count}/{total_frames} ({(frame_count/total_frames*100):.1f}%)", 
+                     (10, 90), text_color_bg=(0,0,0))
+            draw_text(frame, f"Tổng vi phạm: {len(lane_detection_data['violations'])}", 
+                     (10, 120), text_color_bg=(0,0,0))
+            draw_text(frame, f"Đang tracking: {len(lane_detection_data['violation_cooldown'])} xe", 
+                     (10, 150), text_color_bg=(0,0,0))
+            draw_text(frame, f"Chế độ: {performance_config.mode} - FPS: {original_fps:.1f}", 
+                     (10, 180), text_color_bg=(0,0,0))
+            
+            # Ghi frame
+            out.write(frame)
+            
+            # Throttle để tránh stream quá nhanh gây lag
+            time.sleep(0.033)  # ~30fps throttle để mượt mà hơn
+            
+            yield frame
+            
+        # Cleanup
+        cap.release()
+        out.release()
+        
+        print(f"✅ Video detection hoàn thành - {processed_count} frames")
+        
+    except Exception as e:
+        print(f"❌ Lỗi trong video_detection_web: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 def video_detection(path_x=""):
+    """Hàm cũ - giữ lại để tương thích"""
     cap = cv2.VideoCapture(path_x)
     model = YOLO('best_new/vehicle.pt')
     stt_m = 0
@@ -330,7 +674,70 @@ def video_detection(path_x=""):
     cv2.destroyAllWindows()
 
 
+def reset_lane_detection_data():
+    """Reset toàn bộ dữ liệu lane detection cho phiên mới"""
+    global lane_detection_data
+    
+    print("🔄 RESET lane detection data for new session...")
+    
+    lane_detection_data.update({
+        'violations': [],
+        'motor_violations': 0,
+        'car_violations': 0,
+        'start_time': datetime.datetime.now(),
+        'video_writer': None,
+        'output_path': None,
+        'timestamp': datetime.datetime.now().strftime("%Y%m%d_%H%M%S"),
+        'tracked_vehicles': {},
+        'violation_cooldown': {},  # QUAN TRỌNG: Reset tracking để tránh duplicate
+        'violation_frames': [],
+        'frame_count': 0
+    })
+    
+    print(f"✅ Lane detection data reset complete - Timestamp: {lane_detection_data['timestamp']}")
+
+
+def generate_frames_lane(path_x):
+    """Generate frames cho lane detection với khả năng điều khiển từ web"""
+    global lane_detection_active
+    
+    # RESET DỮ LIỆU KHI BẮT ĐẦU PHIÊN MỚI
+    reset_lane_detection_data()
+    lane_detection_active = True
+    
+    print(f"🎬 Starting new lane detection session for: {path_x}")
+    
+    try:
+        yolo_output = video_detection_web(path_x)
+        for detection_ in yolo_output:
+            if not lane_detection_active:
+                print("🛑 Lane detection stopped by user request")
+                break
+            
+            try:
+                # Encode với quality cao để tránh artifacts gây chớp chớp
+                encode_params = [cv2.IMWRITE_JPEG_QUALITY, 85]  # Chất lượng cao hơn
+                ref, buffer = cv2.imencode('.jpg', detection_, encode_params)
+                
+                if ref:
+                    frame = buffer.tobytes()
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                else:
+                    print("⚠️ Failed to encode frame, skipping...")
+                    
+            except Exception as e:
+                print(f"⚠️ Error encoding frame: {e}")
+                continue
+                
+    except Exception as e:
+        print(f"❌ Error in video detection: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 def generate_frames(path_x):
+    """Hàm cũ - giữ lại để tương thích"""
     yolo_output = video_detection(path_x)
     for detection_ in yolo_output:
         ref, buffer = cv2.imencode('.jpg', detection_)
@@ -341,7 +748,23 @@ def generate_frames(path_x):
 
 
 def generate_frames_helmet(path_x):
-    yolo_output = video_detect_helmet_with_plate(path_x)
+    # Defensive: video_detect_helmet_with_plate may exist in another module. If not, fallback to placeholder stream
+    # Try to obtain function dynamically to avoid static NameError
+    func = globals().get('video_detect_helmet_with_plate')
+    if func is None:
+        # Fallback: return a simple placeholder stream
+        import numpy as np
+        while True:
+            frame = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.putText(frame, "Helmet detection not available", (20, 220), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2)
+            ref, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        return
+
+    yolo_output = func(path_x)
+
     try:
         for detection_ in yolo_output:
             ref, buffer = cv2.imencode('.jpg', detection_)
@@ -388,7 +811,7 @@ def video():
     if not uploaded_video:
         return "No video uploaded for lane detection", 400
     
-    return Response(generate_frames(path_x=uploaded_video),
+    return Response(generate_frames_lane(path_x=uploaded_video),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
@@ -698,6 +1121,181 @@ def upload_video_lane():
         })
     
     return jsonify({'error': 'Invalid file type'}), 400
+
+
+# API để dừng lane detection và xuất kết quả
+@app.route("/stop_lane_detection", methods=['POST'])
+def stop_lane_detection():
+    """Dừng lane detection và xuất kết quả"""
+    global lane_detection_active, lane_detection_data
+    
+    if not lane_detection_active:
+        return jsonify({'error': 'Lane detection is not running'}), 400
+    
+    print("🛑 Nhận yêu cầu dừng từ web...")
+    lane_detection_active = False
+    
+    # Đợi một chút để video detection dừng hoàn toàn
+    time.sleep(2)
+    
+    try:
+        # Đóng video writer nếu còn mở
+        if lane_detection_data.get('video_writer'):
+            lane_detection_data['video_writer'].release()
+            lane_detection_data['video_writer'] = None
+        
+        violations_data = lane_detection_data.get('violations', [])
+        timestamp = lane_detection_data.get('timestamp', datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
+        output_path = lane_detection_data.get('output_path', '')
+        
+        # Xuất CSV nếu có vi phạm
+        csv_filename = None
+        json_filename = None
+        
+        if violations_data:
+            output_dir = "output"
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Xuất CSV
+            csv_filename = os.path.join(output_dir, f"lane_violations_stats_{timestamp}.csv")
+            df = pd.DataFrame(violations_data)
+            df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+            
+            # Xuất JSON chi tiết
+            json_filename = os.path.join(output_dir, f"lane_violations_details_{timestamp}.json")
+            with open(json_filename, 'w', encoding='utf-8') as f:
+                json.dump({
+                    'video_info': {
+                        'input_path': session.get('uploaded_video_lane', ''),
+                        'output_path': output_path,
+                        'timestamp': timestamp
+                    },
+                    'violations': violations_data,
+                    'summary': {
+                        'total_violations': len(violations_data),
+                        'motor_violations': lane_detection_data.get('motor_violations', 0),
+                        'car_violations': lane_detection_data.get('car_violations', 0),
+                        'processing_time': time.time() - lane_detection_data.get('start_time', time.time())
+                    }
+                }, f, indent=2, ensure_ascii=False)
+        
+        # Inspect output video to report exact frame count and duration
+        actual_video_info = None
+        try:
+            if output_path and os.path.exists(output_path):
+                cap_out = cv2.VideoCapture(output_path)
+                out_frames = int(cap_out.get(cv2.CAP_PROP_FRAME_COUNT))
+                out_fps = cap_out.get(cv2.CAP_PROP_FPS) or lane_detection_data.get('original_fps')
+                out_duration = out_frames / (out_fps if out_fps > 0 else 1)
+                cap_out.release()
+                actual_video_info = {
+                    'frames': out_frames,
+                    'fps': out_fps,
+                    'duration_seconds': out_duration,
+                    'path': output_path
+                }
+        except Exception as e:
+            print(f"⚠️ Unable to inspect output video: {e}")
+
+        # Tạo response
+        response_data = {
+            'success': True,
+            'message': 'Lane detection stopped and results exported successfully',
+            'summary': {
+                'total_violations': len(violations_data),
+                'motor_violations': lane_detection_data.get('motor_violations', 0),
+                'car_violations': lane_detection_data.get('car_violations', 0),
+                'processing_time': time.time() - lane_detection_data.get('start_time', time.time()),
+                'frames_processed_in_session': lane_detection_data.get('frame_count', 0),
+                'expected_duration_seconds': lane_detection_data.get('frame_count', 0) / (lane_detection_data.get('original_fps', 1) or 1)
+            },
+            'files': {
+                'video': os.path.basename(output_path) if output_path else None,
+                'csv': os.path.basename(csv_filename) if csv_filename else None,
+                'json': os.path.basename(json_filename) if json_filename else None
+            },
+            'video_info': actual_video_info
+        }
+        
+        print(f"✅ Đã xuất kết quả thành công:")
+        print(f"   - Video: {output_path}")
+        if csv_filename:
+            print(f"   - CSV: {csv_filename}")
+            print(f"   - JSON: {json_filename}")
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        print(f"❌ Lỗi khi xuất kết quả: {e}")
+        return jsonify({'error': f'Error exporting results: {str(e)}'}), 500
+
+
+# API để lấy trạng thái hiện tại
+@app.route("/lane_detection_status", methods=['GET'])
+def get_lane_detection_status():
+    """Lấy trạng thái hiện tại của lane detection với debug info chi tiết"""
+    global lane_detection_active, lane_detection_data
+    
+    # Tính runtime
+    if lane_detection_data.get('start_time') and isinstance(lane_detection_data['start_time'], datetime.datetime):
+        current_time = datetime.datetime.now()
+        runtime_delta = current_time - lane_detection_data['start_time']
+        runtime_seconds = runtime_delta.total_seconds()
+    else:
+        runtime_seconds = 0
+    
+    # Debug info để kiểm tra accuracy
+    debug_info = {
+        'active_cooldowns': len(lane_detection_data.get('violation_cooldown', {})),
+        'frame_count': lane_detection_data.get('frame_count', 0),
+        'timestamp': lane_detection_data.get('timestamp', 'N/A'),
+        'start_time': str(lane_detection_data.get('start_time', 'N/A')),
+        'violations_list_length': len(lane_detection_data.get('violations', [])),
+        'motor_count_direct': lane_detection_data.get('motor_violations', 0),
+        'car_count_direct': lane_detection_data.get('car_violations', 0)
+    }
+    
+    return jsonify({
+        'active': lane_detection_active,
+        'motor_violations': lane_detection_data.get('motor_violations', 0),
+        'car_violations': lane_detection_data.get('car_violations', 0), 
+        'total_violations': len(lane_detection_data.get('violations', [])),
+        'runtime': runtime_seconds,
+        'runtime_formatted': f"{int(runtime_seconds//3600):02d}:{int((runtime_seconds%3600)//60):02d}:{int(runtime_seconds%60):02d}",
+        'debug': debug_info,
+        'last_updated': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+
+
+# Route để download file đã xuất
+@app.route("/download_lane_results/<file_type>")
+def download_lane_results(file_type):
+    """Download file kết quả (video, csv, json)"""
+    try:
+        output_dir = "output"
+        timestamp = lane_detection_data.get('timestamp')
+        
+        if not timestamp:
+            return "No results available", 404
+        
+        if file_type == "video":
+            filename = f"lane_violations_{timestamp}.mp4"
+        elif file_type == "csv":
+            filename = f"lane_violations_stats_{timestamp}.csv"
+        elif file_type == "json":
+            filename = f"lane_violations_details_{timestamp}.json"
+        else:
+            return "Invalid file type", 400
+        
+        file_path = os.path.join(output_dir, filename)
+        
+        if os.path.exists(file_path):
+            return send_file(file_path, as_attachment=True, download_name=filename)
+        else:
+            return "File not found", 404
+            
+    except Exception as e:
+        return f"Error downloading file: {str(e)}", 500
 
 
 # Generate frames for red light detection (basic streaming)

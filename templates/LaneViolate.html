@@ -718,30 +718,207 @@
         document.getElementById("statusIndicator").style.display = "block";
 
         startRuntimeTimer();
+        startStatusUpdater(); // Bắt đầu cập nhật trạng thái từ server
         showAlert("success", "Đã bắt đầu giám sát vi phạm làn đường!");
       }
 
+      function startStatusUpdater() {
+        // Cập nhật trạng thái từ server mỗi 2 giây
+        const statusInterval = setInterval(() => {
+          if (!isDetecting) {
+            clearInterval(statusInterval);
+            return;
+          }
+
+          fetch("/lane_detection_status")
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.active) {
+                // Cập nhật số liệu vi phạm
+                document.getElementById("totalViolations").textContent =
+                  data.total_violations;
+                document.getElementById("motorViolations").textContent =
+                  data.motor_violations;
+                document.getElementById("carViolations").textContent =
+                  data.car_violations;
+
+                // Cập nhật vi phạm mới vào danh sách
+                updateViolationsList(data);
+              } else {
+                // Server đã dừng, cập nhật UI
+                isDetecting = false;
+                clearInterval(statusInterval);
+              }
+            })
+            .catch((error) => {
+              console.error("Error updating status:", error);
+            });
+        }, 2000);
+      }
+
+      function updateViolationsList(data) {
+        // Giả lập thêm vi phạm mới (trong thực tế sẽ lấy từ server)
+        const currentTotal = parseInt(
+          document.getElementById("totalViolations").textContent
+        );
+        const newTotal = data.total_violations;
+
+        if (newTotal > currentTotal) {
+          // Có vi phạm mới
+          const motorCurrent = parseInt(
+            document.getElementById("motorViolations").textContent
+          );
+          const carCurrent = parseInt(
+            document.getElementById("carViolations").textContent
+          );
+
+          const motorNew = data.motor_violations;
+          const carNew = data.car_violations;
+
+          if (motorNew > motorCurrent) {
+            addViolationToList("motor");
+          }
+          if (carNew > carCurrent) {
+            addViolationToList("car");
+          }
+        }
+      }
+
+      function addDownloadButtons(files) {
+        const videoControls = document.querySelector(".video-controls");
+
+        // Remove existing download buttons
+        const existingDownloads = videoControls.querySelectorAll(
+          ".download-btn"
+        );
+        existingDownloads.forEach((btn) => btn.remove());
+
+        // Add new download buttons
+        if (files.video) {
+          const videoBtn = document.createElement("button");
+          videoBtn.className = "btn btn-primary download-btn";
+          videoBtn.innerHTML = '<i class="fas fa-download"></i> Tải Video';
+          videoBtn.onclick = () => downloadFile("video");
+          videoControls.appendChild(videoBtn);
+        }
+
+        if (files.csv) {
+          const csvBtn = document.createElement("button");
+          csvBtn.className = "btn btn-success download-btn";
+          csvBtn.innerHTML = '<i class="fas fa-file-csv"></i> Tải CSV';
+          csvBtn.onclick = () => downloadFile("csv");
+          videoControls.appendChild(csvBtn);
+        }
+
+        if (files.json) {
+          const jsonBtn = document.createElement("button");
+          jsonBtn.className = "btn btn-secondary download-btn";
+          jsonBtn.innerHTML = '<i class="fas fa-file-code"></i> Tải JSON';
+          jsonBtn.onclick = () => downloadFile("json");
+          videoControls.appendChild(jsonBtn);
+        }
+      }
+
+      function downloadFile(fileType) {
+        const url = `/download_lane_results/${fileType}`;
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "";
+        link.click();
+      }
+
       function stopDetection() {
-        isDetecting = false;
+        if (!isDetecting) {
+          showAlert("error", "Hệ thống không đang chạy!");
+          return;
+        }
 
-        document.getElementById("startBtn").disabled = false;
-        document.getElementById("stopBtn").disabled = true;
-        document.getElementById("status").textContent = "Đã dừng";
-        document.getElementById("statusIndicator").style.display = "none";
+        showAlert("info", "Đang dừng và xuất kết quả...");
+        showLoading(true);
 
-        stopRuntimeTimer();
-        showAlert("info", "Đã dừng giám sát!");
+        fetch("/stop_lane_detection", {
+          method: "POST",
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              isDetecting = false;
+              document.getElementById("startBtn").disabled = false;
+              document.getElementById("stopBtn").disabled = true;
+              document.getElementById("status").textContent = "Đã dừng";
+              document.getElementById("statusIndicator").style.display = "none";
+
+              stopRuntimeTimer();
+
+              // Update final stats
+              if (data.summary) {
+                document.getElementById("totalViolations").textContent =
+                  data.summary.total_violations;
+                document.getElementById("motorViolations").textContent =
+                  data.summary.motor_violations;
+                document.getElementById("carViolations").textContent =
+                  data.summary.car_violations;
+              }
+
+              // Show success message with download links
+              let message = `Đã xuất kết quả thành công!\n`;
+              message += `Tổng vi phạm: ${data.summary?.total_violations || 0}\n`;
+              message += `Xe máy: ${data.summary?.motor_violations || 0}, Ô tô: ${data.summary?.car_violations || 0}`;
+
+              showAlert("success", message);
+
+              // Add download buttons if files are available
+              addDownloadButtons(data.files);
+
+              // Show exported video info for debugging/trust
+              if (data.video_info) {
+                const vi = data.video_info;
+                let infoMsg = `Exported video: ${vi.path}\nFrames: ${vi.frames}, FPS: ${vi.fps?.toFixed(2) || 'N/A'}, Duration(s): ${vi.duration_seconds?.toFixed(2) || 'N/A'}`;
+                // Compare with server expected frames
+                const expected = data.summary?.frames_processed_in_session || 0;
+                if (expected && Math.abs(expected - vi.frames) > 3) {
+                  infoMsg += `\n\nWarning: Expected frames (${expected}) != Exported frames (${vi.frames}). Video may be truncated.`;
+                }
+                alert(infoMsg);
+              }
+            } else {
+              showAlert("error", data.error || "Có lỗi xảy ra khi dừng!");
+            }
+            hideLoading();
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            showAlert("error", "Có lỗi xảy ra khi dừng hệ thống!");
+            hideLoading();
+          });
       }
 
       function clearVideo() {
+        // Dừng detection nếu đang chạy
+        if (isDetecting) {
+          stopDetection();
+          // Đợi một chút trước khi clear
+          setTimeout(() => {
+            clearVideoActual();
+          }, 2000);
+        } else {
+          clearVideoActual();
+        }
+      }
+
+      function clearVideoActual() {
         videoStream.src = "";
         videoStream.style.display = "none";
         videoPlaceholder.style.display = "flex";
         uploadSection.style.display = "block";
 
-        stopDetection();
         resetStats();
         hideAllAlerts();
+
+        // Remove download buttons
+        const videoControls = document.querySelector(".video-controls");
+        const downloadBtns = videoControls.querySelectorAll(".download-btn");
+        downloadBtns.forEach((btn) => btn.remove());
       }
 
       function startRuntimeTimer() {

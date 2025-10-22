@@ -15,28 +15,39 @@ import json
 # Initialize EasyOCR for license plate recognition
 reader = easyocr.Reader(['vi', 'en'])
 
-def extract_license_plate_fast(frame, bbox):
-    """Super fast license plate extraction - minimal processing to avoid hang"""
+def extract_license_plate_fast(frame, bbox, performance_config=None):
+    """Ultra-fast license plate extraction với performance config"""
     try:
         x1, y1, x2, y2 = map(int, bbox)
 
         # Quick size check
         vehicle_width = x2 - x1
         vehicle_height = y2 - y1
-        if vehicle_width < 60 or vehicle_height < 50:
+        
+        # Stricter size requirements for performance
+        min_width = 80 if performance_config and performance_config.mode == "HIGH" else 60
+        min_height = 60 if performance_config and performance_config.mode == "HIGH" else 50
+        
+        if vehicle_width < min_width or vehicle_height < min_height:
             return None, None
 
-        # Try multiple crop regions to find license plate
+        # Reduced search regions for speed
         crop_h = y2 - y1
-        crop_w = x2 - x1
         
-        # Fast approach: Only 2 most effective regions
-        search_regions = [
-            # Bottom 30% of vehicle (most common for cars - highest priority)
-            (y1 + int(crop_h * 0.7), y2, x1, x2, "bottom_30"),
-            # Bottom 50% as backup for different vehicle types
-            (y1 + int(crop_h * 0.5), y2, x1, x2, "bottom_50")
-        ]
+        # Adaptive regions based on performance mode
+        if performance_config and performance_config.mode == "LOW":
+            # Only check bottom region for speed
+            search_regions = [
+                (y1 + int(crop_h * 0.7), y2, x1, x2, "bottom_30")
+            ]
+        else:
+            # Normal regions
+            search_regions = [
+                # Bottom 30% of vehicle (most common for cars - highest priority)
+                (y1 + int(crop_h * 0.7), y2, x1, x2, "bottom_30"),
+                # Bottom 50% as backup for different vehicle types
+                (y1 + int(crop_h * 0.5), y2, x1, x2, "bottom_50")
+            ]
         
         best_result = None
         best_score = 0
@@ -54,15 +65,22 @@ def extract_license_plate_fast(frame, bbox):
             
             # Fast preprocessing - single best method only
             try:
-                # Simple resize + CLAHE (fastest effective method)
-                enhanced = cv2.resize(license_region, None, fx=1.8, fy=1.8, interpolation=cv2.INTER_LINEAR)
-                
-                if len(enhanced.shape) == 3:
-                    enhanced = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
-                
-                # Quick contrast enhancement
-                clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(4, 4))
-                enhanced = clahe.apply(enhanced)
+                # Adaptive enhancement based on performance mode
+                if performance_config and performance_config.mode == "LOW":
+                    # Minimal processing for speed
+                    enhanced = cv2.resize(license_region, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_LINEAR)
+                    if len(enhanced.shape) == 3:
+                        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
+                else:
+                    # Normal processing
+                    enhanced = cv2.resize(license_region, None, fx=1.8, fy=1.8, interpolation=cv2.INTER_LINEAR)
+                    
+                    if len(enhanced.shape) == 3:
+                        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
+                    
+                    # Quick contrast enhancement only for MEDIUM/HIGH
+                    clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(4, 4))
+                    enhanced = clahe.apply(enhanced)
                 
             except:
                 # Fallback to simple resize
@@ -238,17 +256,23 @@ def extract_license_plate(frame, bbox, expand_ratio=0.2):
     return None, None
 
 
-def process_helmet_video_complete(input_path, output_path, use_improved_detection=False):
+def process_helmet_video_complete(input_path, output_path, use_improved_detection=False, performance_mode="MEDIUM"):
     """
-    FAST HELMET DETECTION - Only YOLOv8 Custom (No YOLO12, Minimal OCR)
+    OPTIMIZED HELMET DETECTION với performance config
     Args:
         input_path: Path to input video
         output_path: Path to save processed video
-        use_improved_detection: Ignored - always use fast detection
+        use_improved_detection: Enable advanced processing (ignored if performance is LOW)
+        performance_mode: "LOW", "MEDIUM", "HIGH"
     Returns: Path to processed video and violation statistics
     """
-    print(f"🚀 Starting FAST helmet detection: {input_path}")
-    print("✅ Using YOLOv8 Custom only (No YOLO12, Minimal OCR)")
+    from performance_config import PerformanceConfig
+    
+    # Khởi tạo performance config
+    performance_config = PerformanceConfig(performance_mode)
+    print(f"🚀 Starting OPTIMIZED helmet detection: {input_path}")
+    print(f"⚡ Performance mode: {performance_config.mode}")
+    print(f"📊 {performance_config.get_info_text()}")
     
     # Load YOLOv8 Custom helmet model
     helmet_model = YOLO('model_helmet/helmet.pt')
@@ -280,15 +304,25 @@ def process_helmet_video_complete(input_path, output_path, use_improved_detectio
     frame_count = 0
     name_class = ["without helmet", "helmet"]
     
-    # License plate detection toggle:
-    # True = Helmet + License detection (slower but complete)
-    # False = Helmet only (much faster - recommended for speed)
-    ENABLE_LICENSE_DETECTION = True  # Set to False for speed, True for license plates
+    # License plate detection based on performance config
+    ENABLE_LICENSE_DETECTION = performance_config.enable_license_detection
     
     if ENABLE_LICENSE_DETECTION:
         print("🔥 Processing with helmet detection + License plate recognition...")
     else:
         print("⚡ Processing with SPEED MODE - Helmet detection only (no license plates)...")
+    
+    # Helper function for saving helmet violations
+    def imageViolateHelmet(frame, r1, r2, c1, c2, stt):
+        """Lưu ảnh vi phạm mũ bảo hiểm"""
+        try:
+            cropped_region = frame[r1:r2, c1:c2].copy()
+            save_path = os.path.join('data_xe_vp_bh', f"{stt}.jpg")
+            cv2.imwrite(save_path, cropped_region)
+            return save_path
+        except Exception as e:
+            print(f"Lỗi khi lưu ảnh vi phạm mũ bảo hiểm: {e}")
+            return None
     
     try:
         while True:
@@ -298,9 +332,10 @@ def process_helmet_video_complete(input_path, output_path, use_improved_detectio
                 
             frame_count += 1
             
-            # Vehicle detection every 8th frame for speed (still good tracking)
+            # Vehicle detection with adaptive frequency based on performance
             vehicles = []
-            if frame_count % 8 == 0 and ENABLE_LICENSE_DETECTION:
+            detection_frequency = performance_config.ocr_frequency if ENABLE_LICENSE_DETECTION else 999999
+            if frame_count % detection_frequency == 0 and ENABLE_LICENSE_DETECTION:
                 # Fast mode - reduced logging
                 if frame_count % 100 == 0:  # Only log every 100th frame
                     print(f"🚗 Vehicle detection at frame {frame_count}")
@@ -326,13 +361,13 @@ def process_helmet_video_complete(input_path, output_path, use_improved_detectio
                                         # Reduced logging for speed
                                         # print(f"  Vehicle {vehicle_count}: {vehicle_width}x{vehicle_height} (conf: {v_conf:.2f})")
                                         
-                                        # Try license plate detection with timeout protection
+                                        # Try license plate detection with performance config
                                         license_plate = None
                                         license_bbox = None
                                         
                                         try:
-                                            # Quick license plate detection
-                                            license_plate, license_bbox = extract_license_plate_fast(frame, [v_x1, v_y1, v_x2, v_y2])
+                                            # Quick license plate detection with performance config
+                                            license_plate, license_bbox = extract_license_plate_fast(frame, [v_x1, v_y1, v_x2, v_y2], performance_config)
                                             if license_plate:
                                                 print(f"    ✅ License found: {license_plate} at bbox: {license_bbox}")
                                                 
@@ -379,8 +414,11 @@ def process_helmet_video_complete(input_path, output_path, use_improved_detectio
             
             # No cache cleaning needed - using real-time detection only
             
-            # YOLOv8 Custom helmet detection (every frame for accuracy)
-            results = helmet_model(frame, verbose=False)
+            # YOLOv8 Custom helmet detection với performance config
+            results = helmet_model(frame, 
+                                 conf=performance_config.yolo_conf_threshold,
+                                 imgsz=performance_config.yolo_img_size,
+                                 verbose=False)
             
             for result in results:
                 boxes = result.boxes
@@ -434,8 +472,8 @@ def process_helmet_video_complete(input_path, output_path, use_improved_detectio
                                     
                                     # No cache search - only use current frame detection
                                     
-                                    # Save evidence with license plate info
-                                    if violation_count % 5 == 1:  # Every 5th violation for balance
+                                    # Save evidence based on performance config
+                                    if performance_config.should_save_evidence(violation_count):
                                         try:
                                             # Save violation image
                                             imageViolateHelmet(frame, 0, height, 0, width, violation_count)
