@@ -12,6 +12,7 @@ from testLane import *
 import json
 import sys
 import os
+import easyocr
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from utils.helmet_pdf_utils import create_helmet_pdf_report, get_helmet_violation_info
 # Removed accuracy_config import - using fixed values instead
@@ -31,8 +32,16 @@ def process_helmet_video_complete(input_path, output_path, use_improved_detectio
     print(f"🚀 Starting helmet detection: {input_path}")
     print("⚡ Processing with simple detection - no violation counting...")
     
-    # Load YOLOv8 Custom helmet model
-    model = YOLO('model_helmet/best_helmet_end.pt')
+    # Load YOLOv8 Custom helmet model v2
+    model = YOLO('model_helmet_v2/best.pt')
+    
+    # Initialize EasyOCR for number plate text recognition
+    try:
+        reader = easyocr.Reader(['en'])
+        print("✅ EasyOCR initialized successfully")
+    except Exception as e:
+        print(f"⚠️ EasyOCR initialization failed: {e}")
+        reader = None
     
     # Open video
     cap = cv2.VideoCapture(input_path)
@@ -54,7 +63,7 @@ def process_helmet_video_complete(input_path, output_path, use_improved_detectio
     
     # Simple processing variables
     frame_count = 0
-    name_class = ["without helmet", "helmet"]
+    name_class = ["with helmet", "without helmet", "rider", "number plate"]
     pdf_creation_count = 0
     
     # Process each frame
@@ -68,6 +77,10 @@ def process_helmet_video_complete(input_path, output_path, use_improved_detectio
         # YOLOv8 Custom helmet detection (every frame for accuracy)
         results = model(frame)
         
+        # Variables to store detection results for this frame
+        current_license_plate = None
+        has_helmet_violation = False
+        
         # Simple detection - just draw bounding boxes
         for r in results:
             boxes = r.boxes
@@ -80,27 +93,74 @@ def process_helmet_video_complete(input_path, output_path, use_improved_detectio
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
                         
                         # Draw bounding box based on class
-                        if cls == 0:  # No helmet - VIOLATION
+                        if cls == 1:  # without helmet - VIOLATION (class 1 in new model)
                             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
                             cv2.putText(frame, f"No Helmet: {conf:.2f}", (x1, y1-10), 
                                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                            has_helmet_violation = True
                             
-                            # Create PDF for violation (every 5th detection)
-                            pdf_creation_count += 1
-                            if pdf_creation_count % 5 == 1:  # Create PDF for 1st, 6th, 11th, etc.
-                                try:
-                                    # Save violation image
-                                    imageViolateHelmet(frame, 0, height, 0, width, pdf_creation_count)
-                                    
-                                    # Sử dụng utils mới để tạo PDF
-                                    pdf_path = create_helmet_pdf_report(frame, pdf_creation_count)
-                                    print(f"📄 Created PDF violation report: {pdf_path}")
-                                except Exception as e:
-                                    print(f"❌ Error saving evidence: {e}")
-                        else:  # Helmet detected
+                        elif cls == 0:  # with helmet detected
                             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                             cv2.putText(frame, f"Helmet: {conf:.2f}", (x1, y1-10), 
                                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                        elif cls == 2:  # rider detected
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                            cv2.putText(frame, f"Rider: {conf:.2f}", (x1, y1-10), 
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                        elif cls == 3:  # number plate detected
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
+                            cv2.putText(frame, f"Number Plate: {conf:.2f}", (x1, y1-10), 
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
+                            
+                            # Try to extract text from number plate using OCR
+                            if reader is not None:
+                                try:
+                                    # Crop the number plate region
+                                    plate_crop = frame[y1:y2, x1:x2]
+                                    
+                                    # Preprocess for better OCR
+                                    gray_plate = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2GRAY)
+                                    _, thresh_plate = cv2.threshold(gray_plate, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                                    
+                                    # Use EasyOCR to extract text
+                                    ocr_results = reader.readtext(thresh_plate)
+                                    
+                                    if ocr_results:
+                                        # Get the best result
+                                        best_text = ""
+                                        best_confidence = 0
+                                        for (bbox, text, prob) in ocr_results:
+                                            if prob > best_confidence:
+                                                best_confidence = prob
+                                                best_text = text.strip()
+                                        
+                                        if best_text and len(best_text) >= 3:
+                                            # Display the detected text
+                                            cv2.putText(frame, f"Text: {best_text}", (x1, y2+20), 
+                                                      cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
+                                            print(f"🔍 Detected plate text: {best_text} (confidence: {best_confidence:.2f})")
+                                            
+                                            # Store the detected license plate for this frame
+                                            current_license_plate = best_text
+                                            
+                                except Exception as e:
+                                    print(f"❌ OCR error: {e}")
+        
+        # Create PDF for violation if helmet violation detected
+        if has_helmet_violation:
+            pdf_creation_count += 1
+            if pdf_creation_count % 5 == 1:  # Create PDF for 1st, 6th, 11th, etc.
+                try:
+                    # Save violation image
+                    imageViolateHelmet(frame, 0, height, 0, width, pdf_creation_count)
+                    
+                    # Sử dụng utils mới để tạo PDF với biển số xe
+                    pdf_path = create_helmet_pdf_report(frame, pdf_creation_count, current_license_plate)
+                    print(f"📄 Created PDF violation report: {pdf_path}")
+                    if current_license_plate:
+                        print(f"🚗 License plate included in PDF: {current_license_plate}")
+                except Exception as e:
+                    print(f"❌ Error saving evidence: {e}")
         
         # Add frame info
         # cv2.putText(frame, f"Frame: {frame_count}/{total_frames}", (10, 30), 

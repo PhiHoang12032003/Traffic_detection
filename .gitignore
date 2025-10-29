@@ -173,3 +173,30 @@ coverage.xml
 # Test outputs
 test_outputs/
 test_results/
+
+# Video files and processed outputs
+uploads/
+processed_videos/
+Videos/
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Large model files (optional - uncomment if needed)
+# *.pt
+# *.pth
+# *.weights
+
+# Data folders with large files
+data_oto_vi_pham/
+data_vuot_den_do/
+data_xe_may_vi_pham/
+data_xe_vp_bh/
+
+# Output folders
+output/
+BienBanNopPhatVuotDenDo/
+BienBanNopPhatXeMay/
+BienBanNopPhatXeMayViPhamMuBaoHiem/
+BienBanNopPhatXeOTo/

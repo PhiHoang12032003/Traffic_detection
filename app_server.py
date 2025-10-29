@@ -350,8 +350,17 @@ def generate_frames_helmet(path_x):
             print(f"Error: Could not open video {path_x}")
             return
         
-        # Load YOLO model for helmet detection
-        model = YOLO('model_helmet/best_helmet_end.pt')
+        # Load YOLO model for helmet detection v2
+        model = YOLO('model_helmet_v2/best.pt')
+        
+        # Initialize EasyOCR for number plate text recognition
+        try:
+            import easyocr
+            reader = easyocr.Reader(['en'])
+            print("✅ EasyOCR initialized for helmet detection")
+        except Exception as e:
+            print(f"⚠️ EasyOCR initialization failed: {e}")
+            reader = None
         
         while True:
             ret, frame = cap.read()
@@ -372,15 +381,53 @@ def generate_frames_helmet(path_x):
                         if conf > 0.5:  # Confidence threshold
                             x1, y1, x2, y2 = map(int, box.xyxy[0])
                             
-                            # Draw bounding box
-                            if cls == 0:  # No helmet
+                            # Draw bounding box based on new model classes
+                            if cls == 1:  # without helmet - VIOLATION
                                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
                                 cv2.putText(frame, f"No Helmet: {conf:.2f}", (x1, y1-10), 
                                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                            else:  # Helmet detected
+                            elif cls == 0:  # with helmet
                                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                                 cv2.putText(frame, f"Helmet: {conf:.2f}", (x1, y1-10), 
                                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                            elif cls == 2:  # rider
+                                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                                cv2.putText(frame, f"Rider: {conf:.2f}", (x1, y1-10), 
+                                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+                            elif cls == 3:  # number plate
+                                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
+                                cv2.putText(frame, f"Number Plate: {conf:.2f}", (x1, y1-10), 
+                                          cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
+                                
+                                # Try to extract text from number plate using OCR
+                                if reader is not None:
+                                    try:
+                                        # Crop the number plate region
+                                        plate_crop = frame[y1:y2, x1:x2]
+                                        
+                                        # Preprocess for better OCR
+                                        gray_plate = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2GRAY)
+                                        _, thresh_plate = cv2.threshold(gray_plate, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                                        
+                                        # Use EasyOCR to extract text
+                                        ocr_results = reader.readtext(thresh_plate)
+                                        
+                                        if ocr_results:
+                                            # Get the best result
+                                            best_text = ""
+                                            best_confidence = 0
+                                            for (bbox, text, prob) in ocr_results:
+                                                if prob > best_confidence:
+                                                    best_confidence = prob
+                                                    best_text = text.strip()
+                                            
+                                            if best_text and len(best_text) >= 3:
+                                                # Display the detected text
+                                                cv2.putText(frame, f"Text: {best_text}", (x1, y2+20), 
+                                                          cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
+                                                
+                                    except Exception as e:
+                                        print(f"❌ OCR error: {e}")
             
             # Encode frame as JPEG
             ret, buffer = cv2.imencode('.jpg', frame)
@@ -1049,7 +1096,6 @@ def generate_frames_red_light_advanced(path_x):
                                         import createBB_red_light
                                         from PIL import Image
                                         import tempfile
-                                        import os
                                         
                                         # Lưu ảnh vi phạm
                                         os.makedirs("data_vuot_den_do", exist_ok=True)

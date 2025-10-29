@@ -41,6 +41,7 @@ def process_red_light_video_complete(video_path, output_dir="output"):
     frame_width = None
     frame_height = None
     fps = 30  # Default FPS
+    output_filename = None
 
     t1.start()
     t2.start()
@@ -87,7 +88,6 @@ def process_red_light_video_complete(video_path, output_dir="output"):
                 # Lưu ảnh vi phạm
                 height, width = frame.shape[:2]
                 # Lưu ảnh vi phạm đèn đỏ
-                import os
                 os.makedirs("data_vuot_den_do", exist_ok=True)
                 cv2.imwrite(f"data_vuot_den_do/{violation_count}.jpg", frame)
                 
