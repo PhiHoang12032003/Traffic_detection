@@ -682,25 +682,16 @@
                 onclick="startDetection()"
               >
                 <i class="fas fa-play"></i>
-                Bắt Đầu
-              </button>
-              <button
-                class="btn btn-warning"
-                id="processBtn"
-                onclick="processVideo()"
-                style="display: none"
-              >
-                <i class="fas fa-cogs"></i>
-                Xuất Video Phân Tích
+                Bắt Đầu Phân Tích
               </button>
               <button
                 class="btn btn-danger"
                 id="stopBtn"
-                onclick="stopProcessing()"
+                onclick="stopDetection()"
                 disabled
               >
                 <i class="fas fa-stop"></i>
-                Dừng Xử Lý
+                Dừng Phân Tích
               </button>
               <button class="btn btn-secondary" onclick="clearVideo()">
                 <i class="fas fa-trash"></i>
@@ -750,7 +741,7 @@
                 </div>
               </div>
               <div class="stat-item">
-                <span class="stat-label">Tổng Vi Phạm</span>
+                <span class="stat-label">Tổng Vi Phạm (KHÔNG MŨ)</span>
                 <span class="stat-value danger" id="totalViolations">0</span>
               </div>
               <div class="stat-item">
@@ -910,126 +901,145 @@
           return;
         }
 
-        // Hide upload section and show video stream
-        uploadSection.style.display = "none";
-        startVideoStream();
-
-        // Update status
-        document.getElementById("status").textContent = "Đang phát hiện";
-        document.getElementById("statusIndicator").style.display = "block";
-        document.getElementById("helmetStatus").textContent = "ĐANG PHÁT HIỆN";
-        document.querySelector(".status-icon").classList.add("active");
-
-        // Show process button
-        document.getElementById("processBtn").style.display = "inline-block";
-
-        showAlert("success", "Bắt đầu phát hiện vi phạm mũ bảo hiểm!");
-      }
-
-      function processVideo() {
-        if (uploadSection.style.display !== "none") {
-          showAlert("error", "Vui lòng tải video trước khi xử lý!");
-          return;
-        }
-
-        isProcessing = true;
-
-        document.getElementById("processBtn").disabled = true;
-        document.getElementById("stopBtn").disabled = false;
-        document.getElementById("status").textContent = "Đang xử lý";
-        document.getElementById("statusIndicator").style.display = "block";
-        document.getElementById("processingStatus").classList.add("active");
-
-        showAlert("info", "Đang bắt đầu xử lý video...");
-
-        // Start processing with timeout
-        const processingPromise = fetch("/process_helmet_now", {
-          method: "GET",
-        });
-
-        // Set a timeout to handle long processing
-        const timeoutPromise = new Promise(
-          (_, reject) =>
-            setTimeout(() => reject(new Error("Processing timeout")), 300000) // 5 minutes timeout
-        );
-
-        Promise.race([processingPromise, timeoutPromise])
+        // Call start API
+        fetch("/start_helmet_detection", {
+          method: "POST",
+        })
           .then((response) => response.json())
           .then((data) => {
             if (data.success) {
-              // Show 100% completion when backend actually finishes
-              updateProgress(100);
-              document.getElementById("processingState").textContent =
-                "✅ Hoàn thành!";
-              document.getElementById("estimatedTime").textContent = "Xong";
+              // Hide upload section and show video stream
+              uploadSection.style.display = "none";
+              startVideoStream();
 
-              // Only show success when backend actually completes
-              showAlert("success", "✅ Xử lý video hoàn thành thành công!");
-              updateStats(data.stats);
-              loadProcessedVideo();
+              // Enable/disable buttons
+              document.getElementById("startBtn").disabled = true;
+              document.getElementById("stopBtn").disabled = false;
 
-              // Show completion message
-              document.getElementById("status").textContent = "Hoàn thành";
-              document.getElementById("statusIndicator").style.display = "none";
-              document
-                .getElementById("processingStatus")
-                .classList.remove("active");
+              // Update status
+              document.getElementById("status").textContent = "Đang phát hiện";
+              document.getElementById("statusIndicator").style.display = "block";
+              document.getElementById("helmetStatus").textContent =
+                "ĐANG PHÁT HIỆN";
+              document.querySelector(".status-icon").classList.add("active");
 
-              // Show final success notification
-              setTimeout(() => {
-                showAlert(
-                  "success",
-                  "🎉 Video đã được xử lý và lưu thành công!"
-                );
-              }, 1000);
+              showAlert("success", "✅ Bắt đầu phát hiện vi phạm mũ bảo hiểm!");
+
+              // Start polling for status updates
+              startStatusPolling();
             } else {
-              showAlert(
-                "error",
-                data.error || "Có lỗi xảy ra khi xử lý video!"
-              );
+              showAlert("error", data.error || "Không thể bắt đầu phát hiện!");
             }
-            stopProcessing();
           })
           .catch((error) => {
             console.error("Error:", error);
-            if (error.message === "Processing timeout") {
-              showAlert(
-                "error",
-                "⏰ Xử lý video mất quá nhiều thời gian. Vui lòng thử lại!"
-              );
-            } else {
-              showAlert("error", "Có lỗi xảy ra khi xử lý video!");
-            }
-            stopProcessing();
+            showAlert("error", "Có lỗi xảy ra khi bắt đầu phát hiện!");
           });
-
-        // Show real-time progress without simulation
-        showRealProgress();
       }
 
-      function stopProcessing() {
-        isProcessing = false;
+      function stopDetection() {
+        // Call stop API
+        fetch("/stop_helmet_detection", {
+          method: "POST",
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              // Enable/disable buttons
+              document.getElementById("startBtn").disabled = false;
+              document.getElementById("stopBtn").disabled = true;
 
-        document.getElementById("processBtn").disabled = false;
-        document.getElementById("stopBtn").disabled = true;
-        document.getElementById("status").textContent = "Sẵn sàng";
-        document.getElementById("statusIndicator").style.display = "none";
-        document.getElementById("processingStatus").classList.remove("active");
+              // Update status
+              document.getElementById("status").textContent = "Đã dừng";
+              document.getElementById("statusIndicator").style.display = "none";
+              document.getElementById("helmetStatus").textContent = "ĐÃ DỪNG";
+              document.querySelector(".status-icon").classList.remove("active");
 
-        // Reset progress
-        document.getElementById("progressFill").style.width = "0%";
-        document.getElementById("progressText").textContent = "0%";
-        document.getElementById("processingProgress").textContent = "0%";
-        document.getElementById("processingState").textContent = "Chờ xử lý...";
-        document.getElementById("estimatedTime").textContent = "Chưa bắt đầu";
+              // Stop polling
+              if (processingInterval) {
+                clearInterval(processingInterval);
+                processingInterval = null;
+              }
 
-        if (processingInterval) {
-          clearInterval(processingInterval);
-          processingInterval = null;
-        }
+              // Show summary
+              const summary = data.summary || {};
+              showAlert(
+                "success",
+                `✅ Đã dừng và xuất kết quả! Tổng vi phạm: ${
+                  summary.total_violations || 0
+                }`
+              );
+
+              // Update final stats
+              if (summary.total_violations) {
+                document.getElementById("totalViolations").textContent =
+                  summary.total_violations;
+              }
+            } else {
+              showAlert("error", data.error || "Không thể dừng phát hiện!");
+            }
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            showAlert("error", "Có lỗi xảy ra khi dừng phát hiện!");
+          });
+      }
+
+      function startStatusPolling() {
+        // Poll status every 2 seconds
+        processingInterval = setInterval(() => {
+          fetch("/helmet_detection_status")
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.active) {
+                // Update stats real-time
+                // Cumulative session totals
+                const totalViolations =
+                  (typeof data.total_violations !== "undefined"
+                    ? data.total_violations
+                    : data.without_helmet_cum) || 0;
+                document.getElementById("totalViolations").textContent =
+                  totalViolations;
+
+                // Current per-frame counts (match visible boxes)
+                document.getElementById("withHelmet").textContent =
+                  data.with_helmet || 0;
+                document.getElementById("withoutHelmet").textContent =
+                  data.without_helmet || 0;
+
+                // Current per-frame violation rate
+                const vr =
+                  typeof data.violation_rate === "number"
+                    ? data.violation_rate
+                    : 0;
+                document.getElementById("violationRate").textContent = `${vr}%`;
+                document.getElementById("progressText").textContent =
+                  data.runtime_formatted || "00:00:00";
+                
+                console.log("📊 Stats updated:", {
+                  total_violations: totalViolations,
+                  with_helmet_current: data.with_helmet,
+                  without_helmet_current: data.without_helmet,
+                  violation_rate_current: vr
+                });
+              } else {
+                // Detection stopped
+                clearInterval(processingInterval);
+                processingInterval = null;
+              }
+            })
+            .catch((error) => {
+              console.error("Error polling status:", error);
+            });
+        }, 2000);
       }
 
       function clearVideo() {
+        // Stop detection if running
+        if (!document.getElementById("stopBtn").disabled) {
+          stopDetection();
+        }
+
         // Call API to delete video file
         fetch("/clear_upload_helmet", {
           method: "POST",
@@ -1052,100 +1062,13 @@
         videoPlaceholder.style.display = "flex";
         uploadSection.style.display = "block";
 
-        stopProcessing();
         resetStats();
         hideAllAlerts();
         document.getElementById("processingStatus").classList.remove("active");
-      }
 
-      function showRealProgress() {
-        // Show initial progress state
-        document.getElementById("processingState").textContent =
-          "Đang khởi tạo...";
-        document.getElementById("estimatedTime").textContent =
-          "Đang tính toán...";
-
-        // Update progress without reaching 100% until backend completes
-        let progress = 0;
-        processingInterval = setInterval(() => {
-          if (!isProcessing) {
-            clearInterval(processingInterval);
-            return;
-          }
-
-          // Slow, realistic progress that won't reach 100% until backend completes
-          progress += Math.random() * 2; // Much slower progress
-          if (progress > 95) progress = 95; // Cap at 95% until backend completes
-
-          updateProgress(progress);
-        }, 1000); // Update every second instead of 500ms
-      }
-
-      function updateProgress(progress) {
-        document.getElementById("progressFill").style.width = progress + "%";
-        document.getElementById("progressText").textContent =
-          Math.round(progress) + "%";
-        document.getElementById("processingProgress").textContent =
-          Math.round(progress) + "%";
-
-        if (progress < 30) {
-          document.getElementById("processingState").textContent =
-            "Đang phân tích video...";
-          document.getElementById("estimatedTime").textContent = "2-3 phút";
-        } else if (progress < 70) {
-          document.getElementById("processingState").textContent =
-            "Đang phát hiện vi phạm...";
-          document.getElementById("estimatedTime").textContent = "1-2 phút";
-        } else if (progress < 100) {
-          document.getElementById("processingState").textContent =
-            "Đang tạo báo cáo...";
-          document.getElementById("estimatedTime").textContent = "30 giây";
-        } else {
-          // Only show completion when backend actually finishes
-          document.getElementById("processingState").textContent =
-            "Đang hoàn tất...";
-          document.getElementById("estimatedTime").textContent = "Sắp xong";
-        }
-      }
-
-      function updateStats(stats) {
-        if (stats) {
-          violationCount.total = stats.total_detections || 0;
-          violationCount.withHelmet = stats.with_helmet || 0;
-          violationCount.withoutHelmet = stats.without_helmet || 0;
-        } else {
-          // Simulate stats
-          violationCount.total = Math.floor(Math.random() * 50) + 20;
-          violationCount.withHelmet = Math.floor(violationCount.total * 0.7);
-          violationCount.withoutHelmet =
-            violationCount.total - violationCount.withHelmet;
-        }
-
-        document.getElementById("totalViolations").textContent =
-          violationCount.total;
-        document.getElementById("withHelmet").textContent =
-          violationCount.withHelmet;
-        document.getElementById("withoutHelmet").textContent =
-          violationCount.withoutHelmet;
-
-        const violationRate =
-          violationCount.total > 0
-            ? Math.round(
-                (violationCount.withoutHelmet / violationCount.total) * 100
-              )
-            : 0;
-        document.getElementById("violationRate").textContent =
-          violationRate + "%";
-      }
-
-      function loadProcessedVideo() {
-        // Load the processed video
-        videoPlaceholder.style.display = "none";
-        videoStream.style.display = "block";
-        videoStream.src = "/camera2";
-
-        // Show success message
-        showAlert("success", "📹 Video đã được xử lý và hiển thị thành công!");
+        // Reset buttons
+        document.getElementById("startBtn").disabled = false;
+        document.getElementById("stopBtn").disabled = true;
       }
 
       function resetStats() {
@@ -1215,31 +1138,6 @@
           violationsList.removeChild(violationsList.lastChild);
         }
       }
-
-      // Check processing status periodically
-      setInterval(() => {
-        if (isProcessing) {
-          fetch("/api/processing_status")
-            .then((response) => response.json())
-            .then((data) => {
-              if (data.status === "completed") {
-                updateStats(data.stats);
-                loadProcessedVideo();
-                stopProcessing();
-                showAlert("success", "Xử lý video hoàn thành!");
-              } else if (data.status === "error") {
-                showAlert(
-                  "error",
-                  data.error || "Có lỗi xảy ra khi xử lý video!"
-                );
-                stopProcessing();
-              }
-            })
-            .catch((error) => {
-              console.error("Error checking status:", error);
-            });
-        }
-      }, 2000);
     </script>
   </body>
 </html>

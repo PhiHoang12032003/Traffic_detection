@@ -36,6 +36,7 @@ werkzeug>=2.3.7
 # Data Analysis and Plotting ------------------
 pandas>=1.1.4
 seaborn>=0.11.0
+openpyxl>=3.0.0  # Excel export support
 
 # System Performance Monitoring ---------------
 psutil>=5.8.0
