@@ -802,6 +802,8 @@
 
       // Animate number counting
       function animateNumber(elementId, target) {
+        // Ensure target is a number, not a string
+        target = parseInt(target) || 0;
         const element = document.getElementById(elementId);
         const start = parseInt(element.textContent) || 0;
         const increment = (target - start) / 50;
@@ -825,46 +827,69 @@
         alert(`Báo cáo ${format.toUpperCase()} đã được xuất thành công!`);
       }
 
-      // Load initial data
+      // Load initial data FROM DATABASE
       async function loadInitialData() {
         try {
-          // Load data from API
-          const response = await fetch("/test");
-          const data = await response.json();
+          console.log("📊 Loading statistics from database...");
 
-          let totalViolations = 0;
-          let todayViolations = 0;
-          let laneViolations = 0;
-          let helmetViolations = 0;
+          // Load overall stats from database API
+          const response = await fetch("/api/stats/overall");
+          const apiData = await response.json();
 
-          data.forEach((item) => {
-            totalViolations += item[2];
-            if (item[1] === new Date().toISOString().split("T")[0]) {
-              todayViolations += item[2];
+          console.log("📊 API Response:", apiData);
+
+          if (apiData.success && apiData.cameras) {
+            // Extract summary data
+            const summary = apiData.summary || {};
+            const totalViolations = summary.total_violations_all_time || 0;
+            const todayViolations = summary.total_violations_today || 0;
+
+            // Calculate breakdown by camera type
+            let laneViolations = 0;
+            let helmetViolations = 0;
+            let redlightViolations = 0;
+
+            apiData.cameras.forEach((camera) => {
+              if (camera.camera_type === "lane") {
+                laneViolations += camera.total_all_time || 0;
+              } else if (camera.camera_type === "helmet") {
+                helmetViolations += camera.total_all_time || 0;
+              } else if (camera.camera_type === "red_light") {
+                redlightViolations += camera.total_all_time || 0;
+              }
+            });
+
+            // Update stats with real data from database
+            animateNumber("totalViolations", parseInt(totalViolations) || 0);
+            animateNumber("todayViolations", parseInt(todayViolations) || 0);
+            animateNumber("laneViolations", parseInt(laneViolations) || 0);
+            animateNumber("helmetViolations", parseInt(helmetViolations) || 0);
+
+            console.log("✅ Statistics loaded successfully:", {
+              total: totalViolations,
+              today: todayViolations,
+              lane: laneViolations,
+              helmet: helmetViolations,
+              redlight: redlightViolations,
+            });
+
+            // Update charts with real data
+            if (pieChart) {
+              pieChart.data.datasets[0].data = [
+                laneViolations,
+                helmetViolations,
+                redlightViolations,
+              ];
+              pieChart.update();
             }
-            if (
-              item[0] === "OTO" ||
-              item[0] === "Xe Tai" ||
-              item[0] === "Xe Bus"
-            ) {
-              laneViolations += item[2];
-            } else if (item[0] === "Xe May") {
-              helmetViolations += item[2];
-            }
-          });
-
-          // Update stats with real data
-          document.getElementById("totalViolations").textContent =
-            totalViolations;
-          document.getElementById("todayViolations").textContent =
-            todayViolations;
-          document.getElementById("laneViolations").textContent =
-            laneViolations;
-          document.getElementById("helmetViolations").textContent =
-            helmetViolations;
+          } else {
+            console.warn("⚠️ No data from database, using default values");
+            // Use default data
+            loadData("today");
+          }
         } catch (error) {
-          console.error("Error loading data:", error);
-          // Use default data
+          console.error("❌ Error loading data from database:", error);
+          // Use default data on error
           loadData("today");
         }
       }

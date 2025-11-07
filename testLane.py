@@ -209,17 +209,13 @@ if __name__ == '__main__':
                         if not (roi_start[1] < center_y < roi_end[1]):
                             continue
 
-                        # Vẽ bounding box cho đối tượng
-                        label = f"{result.names[cls]} {conf:.2f}"
-                        color = (0, 255, 0) if cls == 1 else (0, 255, 255)
-                        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                        draw_text(frame, label, pos=(x1, y1 - 20), font_scale=0.5, text_color_bg=color)
-
-                        # --- Kiểm tra vi phạm ---
+                        # --- Kiểm tra vi phạm trước ---
+                        is_violation = False
+                        
                         # Xe máy đi vào làn ô tô
                         if cls == 1 and start_line_car[0] < center_x < end_line_car[0]:
+                            is_violation = True
                             stt_m += 1
-                            draw_text(frame, "VI PHAM", (x1, y1 - 40), text_color=(0, 0, 255), text_color_bg=(255,255,255))
                             
                             # Lưu thông tin vi phạm vào danh sách
                             violation_info = {
@@ -247,8 +243,8 @@ if __name__ == '__main__':
 
                         # Ô tô đi vào làn xe máy
                         elif cls in [0, 3, 4] and start_line_motor[0] < center_x < end_line_motor[0]:
+                            is_violation = True
                             stt_ctb += 1
-                            draw_text(frame, "VI PHAM", (x1, y1 - 40), text_color=(0, 0, 255), text_color_bg=(255,255,255))
                             
                             # Lưu thông tin vi phạm vào danh sách
                             violation_info = {
@@ -273,6 +269,20 @@ if __name__ == '__main__':
                                     with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_img:
                                         Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).save(temp_img.name)
                                         createBB.bienBanNopPhat(examBB, temp_img.name, violation_img_path, report_path)
+
+                        # --- Vẽ bounding box sau khi đã kiểm tra vi phạm ---
+                        if is_violation:
+                            # VẼ BOUNDING BOX MÀU ĐỎ CHO XE VI PHẠM
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                            label = f"{result.names[cls]} {conf:.2f}"
+                            draw_text(frame, label, pos=(x1, y1 - 20), font_scale=0.5, text_color_bg=(0, 0, 255))
+                            draw_text(frame, "VI PHAM", (x1, y1 - 40), text_color=(255, 255, 255), text_color_bg=(255, 0, 0))
+                        else:
+                            # VẼ BOUNDING BOX XANH LÁ CHO XE KHÔNG VI PHẠM
+                            label = f"{result.names[cls]} {conf:.2f}"
+                            color = (0, 255, 0)
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                            draw_text(frame, label, pos=(x1, y1 - 20), font_scale=0.5, text_color_bg=color)
 
                     except Exception as e:
                         print(f"Lỗi khi xử lý đối tượng: {e}")

@@ -691,7 +691,7 @@
                 disabled
               >
                 <i class="fas fa-stop"></i>
-                Dừng Phân Tích
+                Xuất Video
               </button>
               <button class="btn btn-secondary" onclick="clearVideo()">
                 <i class="fas fa-trash"></i>
@@ -918,7 +918,8 @@
 
               // Update status
               document.getElementById("status").textContent = "Đang phát hiện";
-              document.getElementById("statusIndicator").style.display = "block";
+              document.getElementById("statusIndicator").style.display =
+                "block";
               document.getElementById("helmetStatus").textContent =
                 "ĐANG PHÁT HIỆN";
               document.querySelector(".status-icon").classList.add("active");
@@ -1015,12 +1016,12 @@
                 document.getElementById("violationRate").textContent = `${vr}%`;
                 document.getElementById("progressText").textContent =
                   data.runtime_formatted || "00:00:00";
-                
+
                 console.log("📊 Stats updated:", {
                   total_violations: totalViolations,
                   with_helmet_current: data.with_helmet,
                   without_helmet_current: data.without_helmet,
-                  violation_rate_current: vr
+                  violation_rate_current: vr,
                 });
               } else {
                 // Detection stopped

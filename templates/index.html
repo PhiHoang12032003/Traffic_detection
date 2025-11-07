@@ -321,6 +321,303 @@
           transform: translateY(-20px);
         }
       }
+
+      /* ==================== CHATBOT STYLES ==================== */
+      .chatbot-button {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        width: 60px;
+        height: 60px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 28px;
+        cursor: pointer;
+        box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+        transition: all 0.3s ease;
+        z-index: 9999;
+        border: none;
+      }
+
+      .chatbot-button:hover {
+        transform: scale(1.1);
+        box-shadow: 0 6px 30px rgba(102, 126, 234, 0.6);
+      }
+
+      .chatbot-button.active {
+        background: #ef4444;
+      }
+
+      .chatbot-container {
+        position: fixed;
+        bottom: 100px;
+        right: 30px;
+        width: 400px;
+        height: 600px;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 50px rgba(0, 0, 0, 0.2);
+        display: none;
+        flex-direction: column;
+        z-index: 9998;
+        overflow: hidden;
+      }
+
+      .chatbot-container.active {
+        display: flex;
+        animation: slideUp 0.3s ease;
+      }
+
+      @keyframes slideUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .chatbot-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .chatbot-header-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .chatbot-header h3 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .chatbot-status {
+        font-size: 12px;
+        opacity: 0.9;
+      }
+
+      .chatbot-close {
+        background: transparent;
+        border: none;
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.2s;
+      }
+
+      .chatbot-close:hover {
+        transform: rotate(90deg);
+      }
+
+      .chatbot-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+        background: #f8fafc;
+      }
+
+      .chatbot-message {
+        margin-bottom: 15px;
+        display: flex;
+        gap: 10px;
+        animation: fadeIn 0.3s ease;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .chatbot-message.user {
+        flex-direction: row-reverse;
+      }
+
+      .chatbot-message-avatar {
+        width: 35px;
+        height: 35px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        flex-shrink: 0;
+      }
+
+      .chatbot-message.user .chatbot-message-avatar {
+        background: #2563eb;
+        color: white;
+      }
+
+      .chatbot-message.assistant .chatbot-message-avatar {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+
+      .chatbot-message-content {
+        max-width: 75%;
+        padding: 12px 16px;
+        border-radius: 15px;
+        word-wrap: break-word;
+        line-height: 1.5;
+      }
+
+      .chatbot-message.user .chatbot-message-content {
+        background: #2563eb;
+        color: white;
+        border-bottom-right-radius: 5px;
+      }
+
+      .chatbot-message.assistant .chatbot-message-content {
+        background: white;
+        color: #333;
+        border-bottom-left-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      }
+
+      .chatbot-typing {
+        display: flex;
+        gap: 5px;
+        padding: 15px;
+      }
+
+      .chatbot-typing span {
+        width: 8px;
+        height: 8px;
+        background: #667eea;
+        border-radius: 50%;
+        animation: typing 1.4s infinite;
+      }
+
+      .chatbot-typing span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+
+      .chatbot-typing span:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+
+      @keyframes typing {
+        0%,
+        60%,
+        100% {
+          transform: translateY(0);
+        }
+        30% {
+          transform: translateY(-10px);
+        }
+      }
+
+      .chatbot-suggestions {
+        padding: 10px 20px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        border-top: 1px solid #e5e7eb;
+        background: white;
+      }
+
+      .chatbot-suggestion {
+        padding: 6px 12px;
+        background: #f3f4f6;
+        border: 1px solid #e5e7eb;
+        border-radius: 15px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .chatbot-suggestion:hover {
+        background: #667eea;
+        color: white;
+        border-color: #667eea;
+      }
+
+      .chatbot-input-area {
+        padding: 15px 20px;
+        border-top: 1px solid #e5e7eb;
+        background: white;
+        display: flex;
+        gap: 10px;
+      }
+
+      .chatbot-input {
+        flex: 1;
+        padding: 12px 15px;
+        border: 2px solid #e5e7eb;
+        border-radius: 25px;
+        font-size: 14px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+
+      .chatbot-input:focus {
+        border-color: #667eea;
+      }
+
+      .chatbot-send {
+        width: 45px;
+        height: 45px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        border-radius: 50%;
+        color: white;
+        font-size: 18px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .chatbot-send:hover {
+        transform: scale(1.05);
+      }
+
+      .chatbot-send:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .chatbot-error {
+        padding: 10px;
+        background: #fee;
+        color: #c33;
+        border-radius: 8px;
+        font-size: 13px;
+        margin: 10px 20px;
+      }
+
+      @media (max-width: 768px) {
+        .chatbot-container {
+          width: calc(100vw - 40px);
+          right: 20px;
+          bottom: 90px;
+        }
+      }
     </style>
 
     <!-- Font Awesome -->
@@ -469,9 +766,66 @@
       </div>
     </footer>
 
+    <!-- Chatbot UI -->
+    <button class="chatbot-button" id="chatbotToggle" title="Trợ lý AI">
+      <i class="fas fa-robot"></i>
+    </button>
+
+    <div class="chatbot-container" id="chatbotContainer">
+      <div class="chatbot-header">
+        <div class="chatbot-header-title">
+          <i class="fas fa-robot"></i>
+          <div>
+            <h3>Trợ Lý AI</h3>
+            <div class="chatbot-status" id="chatbotStatus">Sẵn sàng hỗ trợ</div>
+          </div>
+        </div>
+        <button class="chatbot-close" id="chatbotClose">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <div class="chatbot-messages" id="chatbotMessages">
+        <!-- Welcome message -->
+        <div class="chatbot-message assistant">
+          <div class="chatbot-message-avatar">
+            <i class="fas fa-robot"></i>
+          </div>
+          <div class="chatbot-message-content">
+            Xin chào! Tôi là trợ lý AI hỗ trợ cán bộ công an.<br /><br />
+            Tôi có thể giúp bạn:<br />
+            • Tra cứu vi phạm giao thông<br />
+            • Thống kê và báo cáo<br />
+            • Kiểm tra trạng thái camera<br />
+            • Tra cứu quy định và mức phạt<br /><br />
+            Bạn cần hỗ trợ gì?
+          </div>
+        </div>
+      </div>
+
+      <div class="chatbot-suggestions" id="chatbotSuggestions">
+        <!-- Suggestions will be loaded here -->
+      </div>
+
+      <div class="chatbot-input-area">
+        <input
+          type="text"
+          class="chatbot-input"
+          id="chatbotInput"
+          placeholder="Nhập câu hỏi của bạn..."
+          autocomplete="off"
+        />
+        <button class="chatbot-send" id="chatbotSend">
+          <i class="fas fa-paper-plane"></i>
+        </button>
+      </div>
+    </div>
+
     <script>
       // Animate numbers
       function animateNumber(element, target, duration = 2000) {
+        // Ensure target is a number, not a string
+        target = parseInt(target) || 0;
         let start = 0;
         const increment = target / (duration / 16);
 
@@ -487,64 +841,285 @@
         updateNumber();
       }
 
-      // Load statistics
+      // Load statistics from database
       async function loadStatistics() {
         try {
-          const response = await fetch("/test");
-          const data = await response.json();
+          console.log("📊 Loading statistics from database...");
 
-          let totalViolations = 0;
-          let todayViolations = 0;
-          let laneViolations = 0;
-          let helmetViolations = 0;
+          // Load from new database API
+          const response = await fetch("/api/stats/overall");
+          const result = await response.json();
 
-          data.forEach((item) => {
-            totalViolations += item[2];
-            if (item[1] === new Date().toISOString().split("T")[0]) {
-              todayViolations += item[2];
-            }
-            if (
-              item[0] === "OTO" ||
-              item[0] === "Xe Tai" ||
-              item[0] === "Xe Bus"
-            ) {
-              laneViolations += item[2];
-            } else if (item[0] === "Xe May") {
-              helmetViolations += item[2];
-            }
-          });
+          console.log("📊 API Response:", result);
 
-          // Animate numbers
-          animateNumber(
-            document.getElementById("totalViolations"),
-            totalViolations
-          );
-          animateNumber(
-            document.getElementById("todayViolations"),
-            todayViolations
-          );
-          animateNumber(
-            document.getElementById("laneViolations"),
-            laneViolations
-          );
-          animateNumber(
-            document.getElementById("helmetViolations"),
-            helmetViolations
-          );
+          if (result.success && result.cameras) {
+            const summary = result.summary || {};
+            const totalViolations = summary.total_violations_all_time || 0;
+            const todayViolations = summary.total_violations_today || 0;
+
+            let laneViolations = 0;
+            let helmetViolations = 0;
+            let redLightViolations = 0;
+
+            result.cameras.forEach((camera) => {
+              if (camera.camera_type === "lane") {
+                laneViolations += camera.total_all_time || 0;
+              } else if (camera.camera_type === "helmet") {
+                helmetViolations += camera.total_all_time || 0;
+              } else if (camera.camera_type === "red_light") {
+                redLightViolations += camera.total_all_time || 0;
+              }
+            });
+
+            animateNumber(
+              document.getElementById("totalViolations"),
+              parseInt(totalViolations) || 0
+            );
+            animateNumber(
+              document.getElementById("todayViolations"),
+              parseInt(todayViolations) || 0
+            );
+            animateNumber(
+              document.getElementById("laneViolations"),
+              parseInt(laneViolations) || 0
+            );
+            animateNumber(
+              document.getElementById("helmetViolations"),
+              parseInt(helmetViolations) || 0
+            );
+
+            console.log("✅ Statistics loaded from database:", {
+              total: totalViolations,
+              today: todayViolations,
+              lane: laneViolations,
+              helmet: helmetViolations,
+              redlight: redLightViolations,
+            });
+            return;
+          }
         } catch (error) {
-          console.error("Error loading statistics:", error);
-          // Set default values
-          animateNumber(document.getElementById("totalViolations"), 156);
-          animateNumber(document.getElementById("todayViolations"), 13);
-          animateNumber(document.getElementById("laneViolations"), 45);
-          animateNumber(document.getElementById("helmetViolations"), 67);
+          console.error("❌ Error loading from database API:", error);
         }
+
+        // Fallback: Set default values
+        console.warn("⚠️ Using default values");
+        animateNumber(document.getElementById("totalViolations"), 0);
+        animateNumber(document.getElementById("todayViolations"), 0);
+        animateNumber(document.getElementById("laneViolations"), 0);
+        animateNumber(document.getElementById("helmetViolations"), 0);
       }
 
       // Load statistics when page loads
       document.addEventListener("DOMContentLoaded", function () {
         loadStatistics();
+
+        // Auto refresh every 30 seconds
+        setInterval(loadStatistics, 30000);
+
+        // Initialize chatbot
+        initChatbot();
       });
+
+      // ============================================================================
+      // CHATBOT FUNCTIONALITY
+      // ============================================================================
+
+      let chatbotActive = false;
+      let isProcessing = false;
+
+      function initChatbot() {
+        console.log("🤖 Initializing chatbot...");
+
+        const chatbotToggle = document.getElementById("chatbotToggle");
+        const chatbotClose = document.getElementById("chatbotClose");
+        const chatbotContainer = document.getElementById("chatbotContainer");
+        const chatbotInput = document.getElementById("chatbotInput");
+        const chatbotSend = document.getElementById("chatbotSend");
+        const chatbotMessages = document.getElementById("chatbotMessages");
+
+        // Toggle chatbot
+        chatbotToggle.addEventListener("click", function () {
+          chatbotActive = !chatbotActive;
+          chatbotContainer.classList.toggle("active", chatbotActive);
+          chatbotToggle.classList.toggle("active", chatbotActive);
+
+          if (chatbotActive) {
+            chatbotInput.focus();
+            loadSuggestions();
+          }
+        });
+
+        // Close chatbot
+        chatbotClose.addEventListener("click", function () {
+          chatbotActive = false;
+          chatbotContainer.classList.remove("active");
+          chatbotToggle.classList.remove("active");
+        });
+
+        // Send message on button click
+        chatbotSend.addEventListener("click", function () {
+          sendMessage();
+        });
+
+        // Send message on Enter key
+        chatbotInput.addEventListener("keypress", function (e) {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+          }
+        });
+
+        console.log("✅ Chatbot initialized");
+      }
+
+      function loadSuggestions() {
+        fetch("/api/chat/suggestions")
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success && data.suggestions) {
+              const suggestionsContainer =
+                document.getElementById("chatbotSuggestions");
+              suggestionsContainer.innerHTML = "";
+
+              // Show first 4 suggestions
+              data.suggestions.slice(0, 4).forEach((suggestion) => {
+                const btn = document.createElement("button");
+                btn.className = "chatbot-suggestion";
+                btn.textContent = suggestion;
+                btn.onclick = function () {
+                  document.getElementById("chatbotInput").value = suggestion;
+                  sendMessage();
+                };
+                suggestionsContainer.appendChild(btn);
+              });
+            }
+          })
+          .catch((error) => {
+            console.error("❌ Error loading suggestions:", error);
+          });
+      }
+
+      function sendMessage() {
+        const input = document.getElementById("chatbotInput");
+        const message = input.value.trim();
+
+        if (!message || isProcessing) {
+          return;
+        }
+
+        // Clear input
+        input.value = "";
+
+        // Add user message to chat
+        addMessageToChat("user", message);
+
+        // Show typing indicator
+        showTypingIndicator();
+
+        // Disable input while processing
+        isProcessing = true;
+        document.getElementById("chatbotSend").disabled = true;
+        document.getElementById("chatbotInput").disabled = true;
+
+        // Send to API
+        fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ message: message }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            // Remove typing indicator
+            removeTypingIndicator();
+
+            if (data.success) {
+              addMessageToChat("assistant", data.response);
+            } else {
+              addMessageToChat(
+                "assistant",
+                "⚠️ " + (data.error || "Đã xảy ra lỗi. Vui lòng thử lại.")
+              );
+            }
+          })
+          .catch((error) => {
+            console.error("❌ Chat error:", error);
+            removeTypingIndicator();
+            addMessageToChat(
+              "assistant",
+              "❌ Không thể kết nối với server. Vui lòng kiểm tra kết nối."
+            );
+          })
+          .finally(() => {
+            // Re-enable input
+            isProcessing = false;
+            document.getElementById("chatbotSend").disabled = false;
+            document.getElementById("chatbotInput").disabled = false;
+            document.getElementById("chatbotInput").focus();
+          });
+      }
+
+      function addMessageToChat(role, content) {
+        const messagesContainer = document.getElementById("chatbotMessages");
+
+        const messageDiv = document.createElement("div");
+        messageDiv.className = `chatbot-message ${role}`;
+
+        const avatar = document.createElement("div");
+        avatar.className = "chatbot-message-avatar";
+        avatar.innerHTML =
+          role === "user"
+            ? '<i class="fas fa-user"></i>'
+            : '<i class="fas fa-robot"></i>';
+
+        const contentDiv = document.createElement("div");
+        contentDiv.className = "chatbot-message-content";
+
+        // Convert newlines to <br> and preserve formatting
+        contentDiv.innerHTML = content.replace(/\n/g, "<br>");
+
+        messageDiv.appendChild(avatar);
+        messageDiv.appendChild(contentDiv);
+
+        messagesContainer.appendChild(messageDiv);
+
+        // Scroll to bottom
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+
+      function showTypingIndicator() {
+        const messagesContainer = document.getElementById("chatbotMessages");
+
+        const typingDiv = document.createElement("div");
+        typingDiv.className = "chatbot-message assistant";
+        typingDiv.id = "typingIndicator";
+
+        const avatar = document.createElement("div");
+        avatar.className = "chatbot-message-avatar";
+        avatar.innerHTML = '<i class="fas fa-robot"></i>';
+
+        const typingContent = document.createElement("div");
+        typingContent.className = "chatbot-message-content";
+
+        const typingDots = document.createElement("div");
+        typingDots.className = "chatbot-typing";
+        typingDots.innerHTML = "<span></span><span></span><span></span>";
+
+        typingContent.appendChild(typingDots);
+        typingDiv.appendChild(avatar);
+        typingDiv.appendChild(typingContent);
+
+        messagesContainer.appendChild(typingDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+
+      function removeTypingIndicator() {
+        const typingIndicator = document.getElementById("typingIndicator");
+        if (typingIndicator) {
+          typingIndicator.remove();
+        }
+      }
     </script>
   </body>
 </html>

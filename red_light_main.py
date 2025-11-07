@@ -14,14 +14,32 @@ import pandas as pd
 import createBB_red_light
 
 
-def process_red_light_video_complete(video_path, output_dir="output"):
+def process_red_light_video_complete(video_path, output_dir="output", video_id=None, violation_db_instance=None):
     """
     Process red light violation video with the new system
+    Args:
+        video_path: Path to video file
+        output_dir: Output directory for results
+        video_id: Database video ID (optional, for database integration)
+        violation_db_instance: ViolationDatabase instance (passed from app_server)
     """
     # Create output directory if it doesn't exist
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         print(f"Created output directory: {output_dir}")
+    
+    # Use violation_db passed as parameter instead of importing from app_server
+    violation_db = violation_db_instance
+    print(f"🔍 [DEBUG] Starting process with video_id={video_id}")
+    print(f"🔍 [DEBUG] violation_db_instance provided: {violation_db_instance is not None}")
+    
+    if violation_db is not None:
+        print(f"✅ [DATABASE] ViolationDatabase instance available for video_id={video_id}")
+    else:
+        if video_id:
+            print(f"⚠️ [DATABASE] video_id={video_id} but violation_db_instance is None")
+        else:
+            print(f"⚠️ [DATABASE] No video_id and no violation_db_instance")
 
     #create the buffers
     frame_pipeline = Pipeline()
@@ -89,7 +107,8 @@ def process_red_light_video_complete(video_path, output_dir="output"):
                 height, width = frame.shape[:2]
                 # Lưu ảnh vi phạm đèn đỏ
                 os.makedirs("data_vuot_den_do", exist_ok=True)
-                cv2.imwrite(f"data_vuot_den_do/{violation_count}.jpg", frame)
+                image_path = f"data_vuot_den_do/{violation_count}.jpg"
+                cv2.imwrite(image_path, frame)
                 
                 # Tạo PDF biên bản phạt
                 stt_BB_red_light = f'BienBanNopPhatVuotDenDo/{violation_count}.pdf'
@@ -103,14 +122,67 @@ def process_red_light_video_complete(video_path, output_dir="output"):
                                                  f"data_vuot_den_do/{violation_count}.jpg", stt_BB_red_light)
                 temp_image.close()
                 print(f"Created PDF violation report: {stt_BB_red_light}")
+                
+                # Save to database if available
+                print(f"🔍 [DEBUG] Attempting database save:")
+                print(f"  - violation_db is None: {violation_db is None}")
+                print(f"  - violation_db type: {type(violation_db)}")
+                print(f"  - video_id: {video_id}")
+                
+                if violation_db is not None and video_id is not None:
+                    try:
+                        time_in_video = frame_count / fps if fps > 0 else 0
+                        bbox = box_info.get('bbox', [0, 0, 0, 0]) if isinstance(box_info, dict) else [0, 0, 0, 0]
+                        confidence = box_info.get('confidence', 0.5) if isinstance(box_info, dict) else 0.5
+                        
+                        print(f"🔍 [DEBUG] Calling insert_red_light_violation with:")
+                        print(f"  - video_id={video_id}")
+                        print(f"  - frame_number={frame_count}")
+                        print(f"  - time_in_video={time_in_video}")
+                        print(f"  - license_plate={violating_plate_text}")
+                        print(f"  - confidence={confidence}")
+                        print(f"  - bbox={bbox}")
+                        
+                        v_id = violation_db.insert_red_light_violation(
+                            video_id=video_id,
+                            frame_number=frame_count,
+                            time_in_video=time_in_video,
+                            license_plate=violating_plate_text,
+                            confidence=confidence,
+                            bbox=bbox,
+                            image_path=image_path,
+                            pdf_report_path=stt_BB_red_light
+                        )
+                        
+                        if v_id:
+                            print(f"✅✅✅ [DATABASE SUCCESS] Violation saved to database!")
+                            print(f"✅ [CAMERA 3] violation_id={v_id}, plate={violating_plate_text}")
+                        else:
+                            print(f"❌ [DATABASE ERROR] insert_red_light_violation returned None")
+                            
+                    except Exception as db_err:
+                        print(f"❌❌❌ [DATABASE ERROR] Failed to save: {db_err}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    if not violation_db:
+                        print(f"⚠️ [DATABASE SKIP] violation_db is None")
+                    if not video_id:
+                        print(f"⚠️ [DATABASE SKIP] video_id is None")
+                
             except Exception as e:
                 print(f"Error creating PDF for violation {violation_count}: {e}")
         
-        # Hiển thị tất cả vi phạm (sửa từ > 1 thành > 0)
+        # Hiển thị thông tin vi phạm trên video (không có nền đen)
         if len(plates_text) > 0:
             for i, text in enumerate(plates_text):
-                cv2.rectangle(frame, (int(700 * t2.scale_factor), int(40 * t2.scale_factor + i*70 )),(int(1400 * t2.scale_factor), int(120 * t2.scale_factor + i*70 )), (0, 0, 0), -1)
-                # cv2.putText(frame, f"violation detected -> {text}", (int(720*t2.scale_factor),int(100*t2.scale_factor+(i*70))), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0,0,255), thickness=2)
+                # Hiển thị text vi phạm trực tiếp, không vẽ nền đen
+                cv2.putText(frame, f"Vi pham {i+1}: {text}", 
+                          (int(710*t2.scale_factor), int(65*t2.scale_factor+(i*50))), 
+                          fontFace=cv2.FONT_HERSHEY_SIMPLEX, 
+                          fontScale=0.8, 
+                          color=(0,255,255),  # Màu vàng cyan
+                          thickness=2)
 
         # Write frame to video
         if video_writer is not None:
@@ -190,11 +262,16 @@ def generate_frames_red_light_new(video_path):
                 plates_text.append(violating_plate_text)
                 violation_info.append(box_info)
             
-            # Display all violations
+            # Hiển thị thông tin vi phạm trên video streaming (không có nền đen)
             if len(plates_text) > 0:
                 for i, text in enumerate(plates_text):
-                    cv2.rectangle(frame, (int(700 * t2.scale_factor), int(40 * t2.scale_factor + i*70 )),(int(1400 * t2.scale_factor), int(120 * t2.scale_factor + i*70 )), (0, 0, 0), -1)
-                    # cv2.putText(frame, f"violation detected -> {text}", (int(720*t2.scale_factor),int(100*t2.scale_factor+(i*70))), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0,0,255), thickness=2)
+                    # Hiển thị text vi phạm trực tiếp, không vẽ nền đen
+                    cv2.putText(frame, f"Vi pham {i+1}: {text}", 
+                              (int(710*t2.scale_factor), int(65*t2.scale_factor+(i*50))), 
+                              fontFace=cv2.FONT_HERSHEY_SIMPLEX, 
+                              fontScale=0.8, 
+                              color=(0,255,255),  # Màu vàng cyan
+                              thickness=2)
 
             # Encode frame as JPEG
             ret, buffer = cv2.imencode('.jpg', frame)

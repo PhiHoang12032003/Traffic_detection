@@ -12,11 +12,23 @@ from ultralytics import YOLO
 from flask import Flask, jsonify, url_for, request, session, send_file
 from flask import render_template, Response
 from flask_cors import CORS
+
+# Import database modules
+from db_config import get_database_connection, VideoDatabase, ViolationDatabase, StatisticsDatabase
 # from flask_mysqldb import MySQL  # Commented out for easier setup
 # Note: testHelmetNew functions are replaced with processHelmetVideo functionality
 # from processHelmetVideo import process_helmet_video_complete  # Tạm comment để tránh lỗi reportlab
 import threading
 import uuid
+
+# Import Gemini Chatbot
+try:
+    from gemini_chatbot import GeminiChatbot
+    CHATBOT_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ Gemini Chatbot not available: {e}")
+    print("   Install: pip install google-generativeai python-dotenv")
+    CHATBOT_AVAILABLE = False
 # Avoid wildcard import from testLane to prevent name collisions (e.g., datetime)
 # If needed, import explicitly: from testLane import some_function
 # from testLane import *
@@ -30,6 +42,44 @@ import os
 app = Flask(__name__, static_folder='static')
 CORS(app)
 app.secret_key = 'your-secret-key-here-change-in-production'
+
+# Global database connections
+db_connection = None
+video_db = None
+violation_db = None
+stats_db = None
+chatbot = None  # Gemini AI Chatbot instance
+
+def init_database(password=''):
+    """Initialize database connection"""
+    global db_connection, video_db, violation_db, stats_db, chatbot
+    
+    try:
+        db_connection = get_database_connection(password)
+        
+        if db_connection:
+            video_db = VideoDatabase(db_connection)
+            violation_db = ViolationDatabase(db_connection)
+            stats_db = StatisticsDatabase(db_connection)
+            
+            # Initialize chatbot with database connection
+            if CHATBOT_AVAILABLE:
+                try:
+                    chatbot = GeminiChatbot(db_connection)
+                    print("✅ Gemini AI Chatbot initialized")
+                except Exception as e:
+                    print(f"⚠️ Chatbot initialization failed: {e}")
+                    chatbot = None
+            
+            print("✅ Database initialized successfully")
+            return True
+        else:
+            print("⚠️ Database connection failed - running without database")
+            return False
+    except Exception as e:
+        print(f"⚠️ Database initialization error: {e}")
+        print("⚠️ Running without database support")
+        return False
 
 # Configure upload
 UPLOAD_FOLDER = 'uploads'
@@ -100,47 +150,92 @@ helmet_detection_data = {
 #
 @app.route('/test', methods=['GET'])
 def get_violate():
-    # MySQL functionality disabled for easier setup
-    # try:
-    #     cur = mysql.connection.cursor()
-    #     cur.execute(
-    #         "SELECT nametransportation.vh_name, MAX(transportationviolation.date_violate) as date_violate, COUNT(*) AS total_violate FROM transportationviolation INNER JOIN nametransportation ON transportationviolation.id_name = nametransportation.id_name GROUP BY nametransportation.id_name, nametransportation.vh_name;")
-    #     users = cur.fetchall()
-    #     cur.close()
-    #     return jsonify(users)
-    # except Exception as e:
-    #     # Fallback data when database is not available
-    #     print(f"Database error: {e}")
-    sample_data = [
-        ["OTO", "2024-01-15", 12],
-        ["Xe May", "2024-01-15", 25], 
-        ["Xe Dap", "2024-01-15", 3],
-        ["Xe Tai", "2024-01-15", 8],
-        ["Xe Bus", "2024-01-15", 2]
-    ]
-    return jsonify(sample_data)
+    """Get violation statistics from database - ALL TIME"""
+    try:
+        if stats_db:
+            # Get statistics from database
+            overall = stats_db.get_overall_stats()
+            
+            if overall:
+                # Format data for frontend
+                result = []
+                today = datetime.date.today().strftime("%Y-%m-%d")
+                
+                for camera in overall:
+                    camera_type = camera['camera_type']
+                    total_violations = camera['total_violations'] or 0
+                    
+                    # Map camera type to vehicle name - DÙNG TỔNG THỰC TẾ TỪ DATABASE
+                    if camera_type == 'lane':
+                        # Lấy chi tiết vi phạm làn đường
+                        lane_stats = stats_db.get_lane_stats(camera['camera_id'])
+                        motor_count = 0
+                        car_count = 0
+                        for stat in lane_stats:
+                            if stat['violation_type'] == 'motor_in_car_lane':
+                                motor_count = stat['count']
+                            elif stat['violation_type'] == 'car_in_motor_lane':
+                                car_count = stat['count']
+                        result.append(["Xe May", today, motor_count])
+                        result.append(["OTO", today, car_count])
+                    elif camera_type == 'helmet':
+                        result.append(["Xe May", today, total_violations])
+                    elif camera_type == 'red_light':
+                        result.append(["OTO", today, total_violations])
+                
+                return jsonify(result)
+    except Exception as e:
+        print(f"⚠️ Database error: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    # Fallback: Empty data khi không có database
+    return jsonify([
+        ["OTO", datetime.date.today().strftime("%Y-%m-%d"), 0],
+        ["Xe May", datetime.date.today().strftime("%Y-%m-%d"), 0]
+    ])
 
 
 @app.route('/test1', methods=['GET'])
 def get_violate_current():
-    # MySQL functionality disabled for easier setup
-    # try:
-    #     cur = mysql.connection.cursor()
-    #     cur.execute(
-    #         "SELECT nametransportation.vh_name, MAX(transportationviolation.date_violate) as date_violate, COUNT(*) AS total_violate FROM transportationviolation INNER JOIN nametransportation ON transportationviolation.id_name = nametransportation.id_name WHERE transportationviolation.date_violate = curdate() GROUP BY nametransportation.id_name, nametransportation.vh_name;")
-    #     users = cur.fetchall()
-    #     cur.close()
-    #     return jsonify(users)
-    # except Exception as e:
-    #     # Fallback data for current day when database is not available
-    #     print(f"Database error: {e}")
-    sample_data = [
-        ["OTO", "2024-01-15", 3],
-        ["Xe May", "2024-01-15", 7], 
-        ["Xe Tai", "2024-01-15", 2],
-        ["Xe Bus", "2024-01-15", 1]
-    ]
-    return jsonify(sample_data)
+    """Get violation statistics for TODAY only from database"""
+    try:
+        if stats_db:
+            today = datetime.date.today()
+            result = []
+            
+            # Camera 1 - Lane violations TODAY
+            lane_stats = stats_db.get_lane_stats(camera_id=1, date=today)
+            motor_today = 0
+            car_today = 0
+            for stat in lane_stats:
+                if stat['violation_type'] == 'motor_in_car_lane':
+                    motor_today = stat['count']
+                elif stat['violation_type'] == 'car_in_motor_lane':
+                    car_today = stat['count']
+            if motor_today > 0:
+                result.append(["Xe May", today.strftime("%Y-%m-%d"), motor_today])
+            if car_today > 0:
+                result.append(["OTO", today.strftime("%Y-%m-%d"), car_today])
+            
+            # Camera 2 - Helmet violations TODAY
+            helmet_stats = stats_db.get_helmet_stats(camera_id=2, date=today)
+            if helmet_stats and helmet_stats['no_helmet_count'] > 0:
+                result.append(["Xe May", today.strftime("%Y-%m-%d"), helmet_stats['no_helmet_count']])
+            
+            # Camera 3 - Red light violations TODAY
+            redlight_stats = stats_db.get_red_light_stats(camera_id=3, date=today)
+            if redlight_stats and redlight_stats['violation_count'] > 0:
+                result.append(["OTO", today.strftime("%Y-%m-%d"), redlight_stats['violation_count']])
+            
+            return jsonify(result if result else [])
+    except Exception as e:
+        print(f"⚠️ Database error: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    # Fallback: Empty data khi không có database
+    return jsonify([])
 
 
 # MySQL database insert function - Disabled for easier setup
@@ -182,7 +277,7 @@ def draw_text(img, text, pos=(10, 30), font_scale=0.7, text_color=(255, 255, 255
 
 def video_detection_web(path_x=""):
     """Video detection cho lane violation với xuất kết quả"""
-    global lane_detection_active, lane_detection_data
+    global lane_detection_active, lane_detection_data, video_db, violation_db
     
     cap = None
     out = None
@@ -222,6 +317,9 @@ def video_detection_web(path_x=""):
             print("❌ Không thể tạo video writer")
             return
         
+        # Giữ lại video_id nếu đã được set trước đó
+        existing_video_id = lane_detection_data.get('video_id')
+        
         # Update global data
         lane_detection_data.update({
             'start_time': time.time(),
@@ -236,11 +334,23 @@ def video_detection_web(path_x=""):
             'tracked_vehicles': {},
             'violation_cooldown': {},
             'violation_frames': [],
-            'frame_count': 0
+            'frame_count': 0,
+            'video_id': existing_video_id  # Giữ lại video_id đã set
         })
         
         frame_count = 0
         processed_count = 0
+        
+        # Update video status to 'processing'
+        video_id = lane_detection_data.get('video_id')
+        print(f"🔍 [VIDEO_ID CHECK] video_id in lane_detection_data: {video_id}")
+        
+        if video_id and video_db:
+            try:
+                video_db.update_video_status(video_id, 'processing')
+                print(f"📹 Video {video_id} status: processing")
+            except Exception as e:
+                print(f"⚠️ Failed to update video status: {e}")
         
         print(f"🚀 Bắt đầu phân tích web - Performance: {performance_config.mode}")
         print(f"📹 Video output: {output_path}")
@@ -314,12 +424,6 @@ def video_detection_web(path_x=""):
                             # Chỉ xử lý trong ROI
                             if not (roi_start[1] < center_y < roi_end[1]):
                                 continue
-                            
-                            # Vẽ bounding box
-                            label = f"{result.names[cls]} {conf:.2f}"
-                            color = (0, 255, 0) if cls == 1 else (0, 255, 255)
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                            draw_text(frame, label, pos=(x1, y1 - 20), font_scale=0.5, text_color_bg=color)
                             
                             # LOGIC VI PHẠM CẢI TIẾN - Global vehicle tracking để tránh đếm trùng
                             violation_detected = False
@@ -494,14 +598,37 @@ def video_detection_web(path_x=""):
                             
                             
                             # Xử lý hiển thị vi phạm trên video
-                            if violation_detected:
+                            # Kiểm tra xem xe có đang ở sai làn không (hiển thị ngay lập tức)
+                            is_in_wrong_lane = False
+                            if cls == 1 and current_lane == "car":  # Xe máy ở làn ô tô
+                                is_in_wrong_lane = True
+                            elif cls in [0, 3, 4] and current_lane == "motor":  # Ô tô ở làn xe máy
+                                is_in_wrong_lane = True
+                            
+                            # Hoặc xe đã bị đánh dấu vi phạm trước đó
+                            if violation_detected or vehicle_state.get('has_violated', False) or is_in_wrong_lane:
+                                # VẼ BOUNDING BOX ĐỎ CHO XE VI PHẠM hoặc đang ở sai làn
+                                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                                label = f"{result.names[cls]} {conf:.2f}"
+                                draw_text(frame, label, pos=(x1, y1 - 20), font_scale=0.5, text_color_bg=(0, 0, 255))
+                                
                                 # Vẽ text vi phạm với thông tin chi tiết
-                                draw_text(frame, "VI PHAM!", (x1, y1 - 40), 
-                                        text_color=(255, 255, 255), text_color_bg=(255, 0, 0))
+                                if violation_detected or vehicle_state.get('has_violated', False):
+                                    draw_text(frame, "VI PHAM!", (x1, y1 - 40), 
+                                            text_color=(255, 255, 255), text_color_bg=(255, 0, 0))
+                                else:
+                                    draw_text(frame, "SAI LAN!", (x1, y1 - 40), 
+                                            text_color=(255, 255, 255), text_color_bg=(255, 165, 0))
                                 draw_text(frame, f"Lane: {current_lane.upper()}", (x1, y1 - 60), 
                                         font_scale=0.5, text_color=(255, 255, 255), text_color_bg=(255, 0, 0))
                                     
                             else:
+                                # VẼ BOUNDING BOX XANH LÁ CHO XE KHÔNG VI PHẠM
+                                color = (0, 255, 0)
+                                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                                label = f"{result.names[cls]} {conf:.2f}"
+                                draw_text(frame, label, pos=(x1, y1 - 20), font_scale=0.5, text_color_bg=color)
+                                
                                 # Hiển thị lane hiện tại cho xe không vi phạm (để debug)
                                 if frame_count % 15 == 0:  # Mỗi 0.5 giây
                                     lane_color = (255, 0, 255) if current_lane == "motor" else (0, 255, 0)
@@ -523,6 +650,38 @@ def video_detection_web(path_x=""):
                                     'detected_at': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                 }
                                 lane_detection_data['violations'].append(violation_info)
+                                
+                                # LƯU VÀO DATABASE
+                                video_id = lane_detection_data.get('video_id')
+                                print(f"🔍 [DB DEBUG] video_id={video_id}, violation_db={violation_db is not None}")
+                                
+                                if video_id and violation_db:
+                                    try:
+                                        # Map violation type to DB format
+                                        db_violation_type = 'motor_in_car_lane' if violation_type == 'xe_may_vi_pham_lan_oto' else 'car_in_motor_lane'
+                                        
+                                        db_violation_id = violation_db.insert_lane_violation(
+                                            video_id=video_id,
+                                            frame_number=frame_count,
+                                            time_in_video=frame_count / original_fps,
+                                            violation_type=db_violation_type,
+                                            vehicle_type=result.names[cls],
+                                            confidence=conf,
+                                            bbox=[x1, y1, x2, y2],
+                                            image_path=None  # Could save frame if needed
+                                        )
+                                        
+                                        if db_violation_id:
+                                            print(f"💾 Saved to DB: violation_id={db_violation_id}, type={db_violation_type}")
+                                    except Exception as e:
+                                        print(f"⚠️ Failed to save violation to DB: {e}")
+                                        import traceback
+                                        traceback.print_exc()
+                                else:
+                                    if not video_id:
+                                        print(f"⚠️ No video_id in lane_detection_data")
+                                    if not violation_db:
+                                        print(f"⚠️ violation_db is None")
                                 
                         except Exception as e:
                             print(f"Lỗi xử lý detection: {e}")
@@ -666,6 +825,15 @@ def video_detection_web(path_x=""):
             print(f"✅ Đã xuất lane JSON: {json_filename}")
             lane_detection_data['json_filename'] = json_filename
             
+            # Update video status to 'completed'
+            video_id = lane_detection_data.get('video_id')
+            if video_id and video_db:
+                try:
+                    video_db.update_video_status(video_id, 'completed')
+                    print(f"✅ Video {video_id} status: completed")
+                except Exception as e:
+                    print(f"⚠️ Failed to update video status: {e}")
+            
             print(f"📊 Tổng kết vi phạm: Xe máy={lane_detection_data['motor_violations']}, Ô tô={lane_detection_data['car_violations']}, Tổng={len(violations_data)}")
             print(f"🎉 Đã xuất tất cả file thành công!")
             
@@ -690,6 +858,9 @@ def reset_lane_detection_data():
     
     print("🔄 RESET lane detection data for new session...")
     
+    # Giữ lại video_id nếu đã được set
+    current_video_id = lane_detection_data.get('video_id')
+    
     lane_detection_data.update({
         'violations': [],
         'motor_violations': 0,
@@ -704,10 +875,11 @@ def reset_lane_detection_data():
         'frame_count': 0,
         'original_fps': None,
         'output_size': None,
-        'vehicle_states': {}  # Reset vehicle tracking states
+        'vehicle_states': {},  # Reset vehicle tracking states
+        'video_id': current_video_id  # Giữ lại video_id
     })
     
-    print(f"✅ Lane detection data reset complete - Timestamp: {lane_detection_data['timestamp']}")
+    print(f"✅ Lane detection data reset complete - Timestamp: {lane_detection_data['timestamp']}, video_id: {current_video_id}")
 
 
 def generate_frames_lane(path_x):
@@ -813,23 +985,22 @@ def generate_frames_lane(path_x):
 
 
 def _resolve_helmet_weights_path():
-    """Find a valid helmet model weights path from common locations."""
-    candidate_paths = [
-        os.path.join('model_helmet', 'best_helmet_end.pt'),
-        os.path.join('model_helmet', 'helmet_end.pt'),
-        os.path.join('model_helmet', 'helmet.pt'),
-        os.path.join('model_helmet', 'best.pt'),
-        os.path.join('model_helmet_v2', 'best.pt'),
-        os.path.join('model_helmet_v2', 'helmet.pt'),
-    ]
-    for p in candidate_paths:
-        if os.path.exists(p):
-            return p
+    """Find a valid helmet model weights path - CHỈ DÙNG MODEL_HELMET_V2."""
+    # CHỈ SỬ DỤNG MODEL HELMET V2
+    model_path = os.path.join('model_helmet_v2', 'best.pt')
+    if os.path.exists(model_path):
+        return model_path
     return None
 
 
-def generate_frames_helmet(path_x):
-    """Generate frames for helmet detection streaming with stop control"""
+def generate_frames_helmet(path_x, video_id=None):
+    """
+    Generate frames for helmet detection streaming with stop control
+    
+    Args:
+        path_x: Path to video file
+        video_id: Database video ID (from session, passed in to avoid request context issues)
+    """
     global helmet_detection_active, helmet_detection_data
     
     try:
@@ -838,10 +1009,10 @@ def generate_frames_helmet(path_x):
             print(f"Error: Could not open video {path_x}")
             return
         
-        # Load YOLO model for helmet detection with robust path resolution
+        # Load YOLO model for helmet detection - CHỈ DÙNG MODEL_HELMET_V2
         weights_path = _resolve_helmet_weights_path()
         if not weights_path:
-            print("❌ Helmet model weights not found in expected locations. Please place weights in 'model_helmet/'.")
+            print("❌ Helmet model weights not found! Please place 'best.pt' in 'model_helmet_v2/' folder.")
             model = None
         else:
             print(f"✅ Loading helmet model from: {weights_path}")
@@ -970,56 +1141,74 @@ def generate_frames_helmet(path_x):
                         continue
 
                     # First pass: collect detections with normalized labels
-                    dets = []  # {type: 'with_helmet'|'no_helmet'|'rider'|'plate'|'other', bbox, conf}
+                    # MODEL HELMET V2 CLASSES: 0=Helmet, 1=Without Helmet, 2=Rider, 3=Number Plate
+                    dets = []  # {type: 'with_helmet'|'no_helmet'|'rider'|'plate'|'other', bbox, conf, cls}
                     names = getattr(r, 'names', {}) or {}
+                    
                     for box in boxes:
                         cls = int(box.cls[0])
                         conf = float(box.conf[0])
-                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        
+                        # Lấy tọa độ và đảm bảo hợp lệ
+                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                        
+                        # Clamp to frame boundaries
+                        h_frame, w_frame = frame.shape[:2]
+                        x1 = max(0, min(x1, w_frame - 1))
+                        y1 = max(0, min(y1, h_frame - 1))
+                        x2 = max(0, min(x2, w_frame - 1))
+                        y2 = max(0, min(y2, h_frame - 1))
+                        
                         w = max(0, x2 - x1)
                         h = max(0, y2 - y1)
                         area = w * h
-                        label = names.get(cls, str(cls)) if isinstance(names, dict) else str(cls)
-                        nl = _norm_label(label)
-
-                        if ('without' in nl) or ('no' in nl and 'helmet' in nl) or ('khong' in nl and 'mu' in nl):
-                            det_type = 'no_helmet'
-                        elif 'helmet' in nl or 'mu' in nl:
+                        
+                        # MAPPING THEO CLASS ID của model_helmet_v2
+                        if cls == 0:
                             det_type = 'with_helmet'
-                        elif 'rider' in nl or 'person' in nl:
+                        elif cls == 1:
+                            det_type = 'no_helmet'
+                        elif cls == 2:
                             det_type = 'rider'
-                        elif 'plate' in nl or 'license' in nl:
+                        elif cls == 3:
                             det_type = 'plate'
                         else:
                             det_type = 'other'
 
                         # Class-specific confidence and area gates to reduce false 'no helmet'
-                        min_area_with = 1200
-                        min_area_no = 1500
+                        min_area_with = 800   # Giảm xuống để nhận diện helmet dễ hơn
+                        min_area_no = 1200     # Giữ nguyên để tránh false positive
                         
                         # THÊM: Kiểm tra aspect ratio để loại bỏ detection không hợp lý
                         aspect_ratio = w / h if h > 0 else 0
                         
                         if det_type == 'no_helmet':
-                            # TĂNG THRESHOLD cho no_helmet để giảm false positive
-                            if conf < 0.60 or area < min_area_no:  # Tăng từ 0.55 lên 0.60
-                                # Conservative: skip weak/small no-helmet to avoid false alarms
+                            # YÊU CẦU CAO cho no_helmet để giảm false positive
+                            if conf < 0.55 or area < min_area_no:
                                 continue
-                            # Kiểm tra aspect ratio hợp lý cho người (0.3 - 2.5)
-                            if aspect_ratio < 0.3 or aspect_ratio > 2.5:
+                            # Kiểm tra aspect ratio hợp lý cho người (0.3 - 3.0)
+                            if aspect_ratio < 0.3 or aspect_ratio > 3.0:
                                 continue
                         elif det_type == 'with_helmet':
-                            # Giảm threshold cho with_helmet để dễ nhận diện hơn
-                            if conf < 0.30 or area < min_area_with:  # Giảm từ 0.35 xuống 0.30
+                            # YÊU CẦU THẤP HƠN cho with_helmet để nhận diện dễ hơn
+                            if conf < 0.35 or area < min_area_with:
                                 continue
-                            # Aspect ratio cho helmet (thường hơi vuông hơn - 0.4 - 2.0)
-                            if aspect_ratio < 0.4 or aspect_ratio > 2.0:
+                            # Aspect ratio cho helmet (0.4 - 2.5)
+                            if aspect_ratio < 0.4 or aspect_ratio > 2.5:
+                                continue
+                        elif det_type == 'rider':
+                            # BỎ QUA rider detection - không cần vẽ
+                            continue
+                        elif det_type == 'plate':
+                            # Giữ plate detection với threshold thấp
+                            if conf < 0.25:
                                 continue
                         else:
                             if conf < 0.3:
                                 continue
 
-                        dets.append({'type': det_type, 'bbox': (x1, y1, x2, y2), 'conf': conf})
+                        dets.append({'type': det_type, 'bbox': (x1, y1, x2, y2), 'conf': conf, 'cls': cls})
 
                     # Conflict resolution: if with_helmet overlaps with no_helmet, prefer with_helmet
                     # TĂNG CƯỜNG: Ưu tiên with_helmet mạnh hơn để giảm false alarm
@@ -1179,25 +1368,128 @@ def generate_frames_helmet(path_x):
                                 skip_reason = "SUPPRESSED_BY_HELMET"
                                 continue
                             
-                            # ĐIỀU KIỆN CỰC KỲ KHẮT KHE: Chỉ draw và count khi CẢ 3 điều kiện thỏa mãn
+                            # LUÔN VẼ BOUNDING BOX ĐỎ khi detect "no_helmet"
+                            if position_key not in counted_keys:
+                                # Vẽ box đỏ dày để nổi bật
+                                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
+                                
+                                # Vẽ label với background
+                                label = f"KHONG MU: {conf:.2f}"
+                                (text_w, text_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+                                label_y = max(text_h + 10, y1)  # Đảm bảo không bị cắt
+                                cv2.rectangle(frame, (x1, label_y - text_h - 10), (x1 + text_w, label_y), (0, 0, 255), -1)
+                                cv2.putText(frame, label, (x1, label_y - 5),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                                
+                                frame_without += 1
+                                counted_keys.add(position_key)
+                            
+                            # KIỂM TRA ĐIỀU KIỆN ĐỂ COUNT vi phạm vào database (khắt khe hơn)
                             state_ok = helmet_detection_data['state_map'].get(position_key, {}).get('state') == 'no'
                             votes_ok = (no_votes >= 5 and with_votes_last4 == 0)  # 5/6 frames 'no' và 0 'with' trong 4 frames
                             lock_active = frame_number < helmet_detection_data['state_map'].get(position_key, {}).get('lock_until', -1)
                             
-                            # Phải thỏa mãn CẢ BA: state='no' VÀ votes đủ VÀ đang trong lock period
+                            # Chỉ COUNT khi đủ điều kiện (nhưng VẪN VẼ bbox ở trên)
                             if not (state_ok and votes_ok and lock_active):
-                                # Không đủ chắc chắn - KHÔNG hiển thị
+                                # Không đủ chắc chắn - KHÔNG count vào DB
                                 can_count = False
                                 skip_reason = skip_reason or f'NOT_CONFIDENT(state={state_ok},votes={votes_ok},lock={lock_active})'
-                            else:
-                                # ĐỦ ĐIỀU KIỆN - Draw và count
-                                if position_key not in counted_keys:
-                                    # Vẽ box đỏ dày hơn để nổi bật
-                                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 4)
-                                    cv2.putText(frame, f"KHONG MU: {conf:.2f}", (x1, y1-10),
-                                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 3)
-                                    frame_without += 1
-                                    counted_keys.add(position_key)
+                            
+                            # 🚗 LUÔN LUÔN chạy OCR biển số cho detection "không mũ" (dù có count hay không)
+                            # Mục đích: Hiển thị biển số trên video để user nhìn thấy
+                            if reader is not None:
+                                try:
+                                    box_w = x2 - x1
+                                    box_h = y2 - y1
+                                    
+                                    # Extract region below detection for plate (lower 40-110% of box)
+                                    plate_y1 = max(0, y1 + int(box_h * 0.4))  # Bắt đầu từ 40% box (gần cuối người)
+                                    plate_y2 = min(frame.shape[0], y2 + int(box_h * 0.4))  # Extend xuống dưới thêm 40%
+                                    plate_x1 = max(0, x1 - int(box_w * 0.2))  # Mở rộng trái 20%
+                                    plate_x2 = min(frame.shape[1], x2 + int(box_w * 0.2))  # Mở rộng phải 20%
+                                    
+                                    if plate_y2 > plate_y1 and plate_x2 > plate_x1:
+                                        plate_region = frame[plate_y1:plate_y2, plate_x1:plate_x2]
+                                        
+                                        # Debug: Vẽ vùng tìm kiếm biển số (BỎ VẼ BOX MÀU CAM)
+                                        # cv2.rectangle(frame, (plate_x1, plate_y1), (plate_x2, plate_y2), (0, 165, 255), 2)
+                                        
+                                        if plate_region.size > 100:  # Đảm bảo vùng đủ lớn
+                                            # Preprocess cho OCR tốt hơn
+                                            gray_plate = cv2.cvtColor(plate_region, cv2.COLOR_BGR2GRAY)
+                                            # Tăng contrast
+                                            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+                                            enhanced = clahe.apply(gray_plate)
+                                            # Threshold
+                                            _, thresh = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                                            
+                                            # Run OCR
+                                            ocr_results = reader.readtext(thresh, detail=1)
+                                            
+                                            if ocr_results:
+                                                best_text = None
+                                                best_prob = 0
+                                                best_bbox_coords = None
+                                                
+                                                for (bbox_ocr, text, prob) in ocr_results:
+                                                    # Clean text: giữ chữ và số, loại ký tự đặc biệt
+                                                    cleaned = ''.join(c for c in text if c.isalnum() or c.isspace()).strip().upper()
+                                                    # Biển số VN: thường 6-10 ký tự (VD: "29A12345", "DL15AE0190")
+                                                    if len(cleaned.replace(' ', '')) >= 5 and prob > best_prob:
+                                                        best_prob = prob
+                                                        best_text = cleaned
+                                                        best_bbox_coords = bbox_ocr
+                                                
+                                                if best_text and best_prob > 0.2:  # Lowered threshold
+                                                    # Lưu biển số để dùng khi count violation
+                                                    if lp_text is None:
+                                                        lp_text = best_text
+                                                    
+                                                    print(f"🚗 [OCR] F{frame_number} | Plate: '{best_text}' | Conf: {best_prob:.2f}")
+                                                    
+                                                    # 🎨 VẼ BOUNDING BOX TEXT BIỂN SỐ chính xác (màu xanh lá nổi bật)
+                                                    if best_bbox_coords:
+                                                        try:
+                                                            pts = best_bbox_coords
+                                                            xs = [int(p[0]) + plate_x1 for p in pts]
+                                                            ys = [int(p[1]) + plate_y1 for p in pts]
+                                                            ocr_x1 = min(xs)
+                                                            ocr_y1 = min(ys)
+                                                            ocr_x2 = max(xs)
+                                                            ocr_y2 = max(ys)
+                                                            
+                                                            # Vẽ bbox chính xác của text (màu xanh lá, dày)
+                                                            cv2.rectangle(frame, (ocr_x1, ocr_y1), (ocr_x2, ocr_y2), (0, 255, 0), 4)
+                                                        except:
+                                                            pass
+                                                    
+                                                    # 🎨 VẼ TEXT BIỂN SỐ lớn và nổi bật
+                                                    plate_label = f"{best_text}"
+                                                    label_size, _ = cv2.getTextSize(plate_label, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)
+                                                    label_w, label_h = label_size
+                                                    
+                                                    # Vị trí text (dưới vùng tìm kiếm)
+                                                    text_x = plate_x1
+                                                    text_y = plate_y2 + label_h + 15
+                                                    
+                                                    # Vẽ nền đen cho text
+                                                    cv2.rectangle(frame, 
+                                                                (text_x - 5, text_y - label_h - 10), 
+                                                                (text_x + label_w + 10, text_y + 5), 
+                                                                (0, 0, 0), -1)
+                                                    
+                                                    # Vẽ viền vàng
+                                                    cv2.rectangle(frame, 
+                                                                (text_x - 5, text_y - label_h - 10), 
+                                                                (text_x + label_w + 10, text_y + 5), 
+                                                                (0, 255, 255), 2)
+                                                    
+                                                    # Vẽ text màu xanh lá sáng
+                                                    cv2.putText(frame, plate_label, (text_x, text_y - 5),
+                                                              cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
+                                except Exception as ocr_err:
+                                    if frame_number % 100 == 0:  # Log ít hơn
+                                        print(f"⚠️ [OCR] F{frame_number} Error: {ocr_err}")
                             
                             if can_count:
                                 old_count = helmet_detection_data['without_helmet']
@@ -1211,27 +1503,121 @@ def generate_frames_helmet(path_x):
                                 if sm:
                                     sm['state'] = 'no'
                                     sm['lock_until'] = max(sm.get('lock_until', -1), frame_number + 250)
-                                # Try associate nearest recent plate candidate
+                                
+                                # ✅ IMPROVED: Try to extract license plate directly from detection box
                                 lp_text = None
-                                try:
-                                    candidates = [p for p in helmet_detection_data.get('recent_plates', []) if frame_number - p.get('frame', 0) <= 15]
-                                    if candidates:
-                                        cx = (x1 + x2) // 2
-                                        cy = (y1 + y2) // 2
-                                        def dist2(p):
-                                            bb = p.get('bbox') or (cx, cy, cx, cy)
-                                            pcx = (bb[0] + bb[2]) // 2
-                                            pcy = (bb[1] + bb[3]) // 2
-                                            return (pcx - cx)*(pcx - cx) + (pcy - cy)*(pcy - cy)
-                                        best = min(candidates, key=dist2)
-                                        bb = best.get('bbox')
-                                        if bb:
-                                            pcx = (bb[0] + bb[2]) // 2
-                                            pcy = (bb[1] + bb[3]) // 2
-                                            if (pcx - cx)**2 + (pcy - cy)**2 < (250*250):
-                                                lp_text = best.get('text')
-                                except Exception:
-                                    pass
+                                
+                                # Method 1: OCR directly from lower region of no-helmet detection
+                                if reader is not None:
+                                    try:
+                                        # Expand box downward to capture license plate area (typically below rider)
+                                        box_h = y2 - y1
+                                        box_w = x2 - x1
+                                        
+                                        # Extract region below detection for plate (lower 60-100% of full bike)
+                                        plate_y1 = max(0, y1 + int(box_h * 0.6))
+                                        plate_y2 = min(frame.shape[0], y2 + int(box_h * 0.3))  # Extend below
+                                        plate_x1 = max(0, x1 - int(box_w * 0.1))  # Slightly wider
+                                        plate_x2 = min(frame.shape[1], x2 + int(box_w * 0.1))
+                                        
+                                        if plate_y2 > plate_y1 and plate_x2 > plate_x1:
+                                            plate_region = frame[plate_y1:plate_y2, plate_x1:plate_x2]
+                                            
+                                            if plate_region.size > 0:
+                                                # Preprocess for better OCR
+                                                gray_plate = cv2.cvtColor(plate_region, cv2.COLOR_BGR2GRAY)
+                                                # Enhance contrast
+                                                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+                                                enhanced = clahe.apply(gray_plate)
+                                                # Threshold
+                                                _, thresh = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                                                
+                                                # Run OCR
+                                                ocr_results = reader.readtext(thresh)
+                                                
+                                                best_text = None
+                                                best_prob = 0
+                                                best_bbox_coords = None
+                                                
+                                                for (bbox_ocr, text, prob) in ocr_results:
+                                                    # Clean text
+                                                    cleaned = ''.join(c for c in text if c.isalnum() or c.isspace()).strip()
+                                                    # Vietnamese plates: typically 4-9 characters (e.g., "YB 6433", "29A12345")
+                                                    if len(cleaned) >= 4 and prob > best_prob:
+                                                        best_prob = prob
+                                                        best_text = cleaned
+                                                        best_bbox_coords = bbox_ocr
+                                                
+                                                if best_text and best_prob > 0.3:  # Confidence threshold
+                                                    lp_text = best_text
+                                                    print(f"🚗 [OCR DIRECT] Plate detected: '{lp_text}' (conf: {best_prob:.2f})")
+                                                    
+                                                    # 🎨 VẼ BOUNDING BOX BIỂN SỐ (màu vàng nổi bật, dày hơn)
+                                                    cv2.rectangle(frame, (plate_x1, plate_y1), (plate_x2, plate_y2), (0, 255, 255), 4)
+                                                    
+                                                    # Nếu có bbox chính xác từ OCR, vẽ thêm
+                                                    if best_bbox_coords:
+                                                        try:
+                                                            # Convert bbox_ocr to absolute coordinates
+                                                            pts = best_bbox_coords
+                                                            xs = [int(p[0]) + plate_x1 for p in pts]
+                                                            ys = [int(p[1]) + plate_y1 for p in pts]
+                                                            ocr_x1 = min(xs)
+                                                            ocr_y1 = min(ys)
+                                                            ocr_x2 = max(xs)
+                                                            ocr_y2 = max(ys)
+                                                            
+                                                            # Vẽ bbox chính xác của text biển số (màu xanh lá)
+                                                            cv2.rectangle(frame, (ocr_x1, ocr_y1), (ocr_x2, ocr_y2), (0, 255, 0), 3)
+                                                        except:
+                                                            pass
+                                                    
+                                                    # 🎨 VẼ TEXT BIỂN SỐ với nền đen nổi bật
+                                                    plate_label = f"LP: {lp_text} ({best_prob:.2f})"
+                                                    label_size, _ = cv2.getTextSize(plate_label, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
+                                                    label_w, label_h = label_size
+                                                    
+                                                    # Vị trí text (trên bbox)
+                                                    text_x = plate_x1
+                                                    text_y = plate_y1 - 10 if plate_y1 - 10 > label_h else plate_y2 + label_h + 10
+                                                    
+                                                    # Vẽ nền đen cho text
+                                                    cv2.rectangle(frame, 
+                                                                (text_x, text_y - label_h - 8), 
+                                                                (text_x + label_w + 10, text_y + 5), 
+                                                                (0, 0, 0), -1)
+                                                    
+                                                    # Vẽ text màu vàng
+                                                    cv2.putText(frame, plate_label, (text_x + 5, text_y - 3),
+                                                              cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+                                    except Exception as ocr_err:
+                                        # Silent fail for OCR errors
+                                        if frame_number % 50 == 0:
+                                            print(f"⚠️ [OCR DIRECT] Error: {ocr_err}")
+                                
+                                # Method 2: Fallback to recent_plates if direct OCR failed
+                                if lp_text is None:
+                                    try:
+                                        candidates = [p for p in helmet_detection_data.get('recent_plates', []) if frame_number - p.get('frame', 0) <= 15]
+                                        if candidates:
+                                            cx = (x1 + x2) // 2
+                                            cy = (y1 + y2) // 2
+                                            def dist2(p):
+                                                bb = p.get('bbox') or (cx, cy, cx, cy)
+                                                pcx = (bb[0] + bb[2]) // 2
+                                                pcy = (bb[1] + bb[3]) // 2
+                                                return (pcx - cx)*(pcx - cx) + (pcy - cy)*(pcy - cy)
+                                            best = min(candidates, key=dist2)
+                                            bb = best.get('bbox')
+                                            if bb:
+                                                pcx = (bb[0] + bb[2]) // 2
+                                                pcy = (bb[1] + bb[3]) // 2
+                                                if (pcx - cx)**2 + (pcy - cy)**2 < (250*250):
+                                                    lp_text = best.get('text')
+                                                    print(f"🚗 [OCR FALLBACK] Using recent plate: '{lp_text}' (distance: {((pcx - cx)**2 + (pcy - cy)**2)**0.5:.0f}px)")
+                                    except Exception as fallback_err:
+                                        if frame_number % 50 == 0:
+                                            print(f"⚠️ [OCR FALLBACK] Error: {fallback_err}")
                                 violation_info = {
                                     'violation_id': len(helmet_detection_data['violations']) + 1,
                                     'type': 'no_helmet',
@@ -1242,6 +1628,56 @@ def generate_frames_helmet(path_x):
                                     'license_plate': lp_text
                                 }
                                 helmet_detection_data['violations'].append(violation_info)
+                                
+                                # ✅ LƯU VÀO DATABASE (dùng video_id từ parameter, không dùng session)
+                                if violation_db is not None and video_id is not None:
+                                    try:
+                                        fps = helmet_detection_data.get('original_fps', 25.0)
+                                        time_in_video = frame_number / fps if fps > 0 else 0
+                                        
+                                        # Lưu ảnh vi phạm
+                                        os.makedirs("data_xe_vp_bh", exist_ok=True)
+                                        image_path = f"data_xe_vp_bh/helmet_{new_count}.jpg"
+                                        cv2.imwrite(image_path, frame)
+                                        
+                                        # Tạo PDF nếu có biển số
+                                        pdf_path = None
+                                        if lp_text:
+                                            try:
+                                                os.makedirs("BienBanNopPhatXeMayViPhamMuBaoHiem", exist_ok=True)
+                                                pdf_path = f"BienBanNopPhatXeMayViPhamMuBaoHiem/{new_count}.pdf"
+                                                # TODO: Tạo PDF biên bản (cần implement createBB_helmet)
+                                                # from utils.helmet_pdf_utils import create_helmet_pdf_report
+                                                # create_helmet_pdf_report(violation_info, image_path, pdf_path)
+                                            except Exception as pdf_err:
+                                                print(f"⚠️ PDF creation error: {pdf_err}")
+                                        
+                                        v_id = violation_db.insert_helmet_violation(
+                                            video_id=video_id,
+                                            frame_number=frame_number,
+                                            time_in_video=time_in_video,
+                                            has_helmet=False,  # VI PHẠM = không mũ
+                                            confidence=conf,
+                                            license_plate=lp_text,
+                                            bbox=[x1, y1, x2, y2],
+                                            image_path=image_path,
+                                            pdf_report_path=pdf_path
+                                        )
+                                        
+                                        if v_id:
+                                            print(f"✅✅✅ [HELMET DB] Violation saved! v_id={v_id}, plate={lp_text}")
+                                        else:
+                                            print(f"❌ [HELMET DB] insert returned None")
+                                    except Exception as db_err:
+                                        print(f"❌❌❌ [HELMET DB ERROR] {db_err}")
+                                        import traceback
+                                        traceback.print_exc()
+                                else:
+                                    if not violation_db:
+                                        print(f"⚠️ [HELMET DB SKIP] violation_db is None")
+                                    if not video_id:
+                                        print(f"⚠️ [HELMET DB SKIP] video_id is None")
+                                
                                 cooldown_count = len(helmet_detection_data['detection_cooldown'])
                                 print(f"🚨 [KHÔNG MŨ ➕] {old_count} → {new_count} | F{frame_number} | G({grid_x},{grid_y}) | Cooldowns: {cooldown_count}")
                             else:
@@ -1251,8 +1687,15 @@ def generate_frames_helmet(path_x):
                             # draw green once per position_key for visible count
                             if position_key not in counted_keys:
                                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
-                                cv2.putText(frame, f"CO MU: {conf:.2f}", (x1, y1-10),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                                
+                                # Vẽ label với background
+                                label = f"CO MU: {conf:.2f}"
+                                (text_w, text_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+                                label_y = max(text_h + 10, y1)
+                                cv2.rectangle(frame, (x1, label_y - text_h - 10), (x1 + text_w, label_y), (0, 255, 0), -1)
+                                cv2.putText(frame, label, (x1, label_y - 5),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
+                                
                                 frame_with += 1
                                 counted_keys.add(position_key)
                             if can_count:
@@ -1268,32 +1711,42 @@ def generate_frames_helmet(path_x):
                                     print(f"⏭️ [CÓ MŨ SKIP] F{frame_number} | G({grid_x},{grid_y}) | {skip_reason}")
                 
                         elif det_type == 'rider':
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
-                            cv2.putText(frame, f"Rider: {conf:.2f}", (x1, y1-10),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+                            # BỎ VẼ BOUNDING BOX CHO RIDER - model_helmet_v2 class 2
+                            pass
                         elif det_type == 'plate':
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
-                            cv2.putText(frame, f"Number Plate: {conf:.2f}", (x1, y1-10),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
+                            # Luôn vẽ bounding box cho biển số xe (màu tím) - model_helmet_v2 class 3
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 3)
+                            
                             # OCR attempt
+                            plate_text = "BIEN SO"  # Text mặc định
                             if reader is not None:
                                 try:
                                     plate_crop = frame[y1:y2, x1:x2]
-                                    gray_plate = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2GRAY)
-                                    _, thresh_plate = cv2.threshold(gray_plate, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                                    ocr_results = reader.readtext(thresh_plate)
-                                    if ocr_results:
-                                        best_text = ""
-                                        best_confidence = 0
-                                        for (bbox, text, prob) in ocr_results:
-                                            if prob > best_confidence:
-                                                best_confidence = prob
-                                                best_text = text.strip()
-                                        if best_text and len(best_text) >= 3:
-                                            cv2.putText(frame, f"Text: {best_text}", (x1, y2+20),
-                                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
+                                    if plate_crop.size > 0 and plate_crop.shape[0] >= 10 and plate_crop.shape[1] >= 20:
+                                        gray_plate = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2GRAY)
+                                        _, thresh_plate = cv2.threshold(gray_plate, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                                        ocr_results = reader.readtext(thresh_plate)
+                                        if ocr_results:
+                                            best_text = ""
+                                            best_confidence = 0
+                                            for (bbox, text, prob) in ocr_results:
+                                                if prob > best_confidence:
+                                                    best_confidence = prob
+                                                    best_text = text.strip().replace(" ", "").upper()
+                                            if best_text and len(best_text) >= 3:
+                                                plate_text = best_text
+                                                if lp_text is None:
+                                                    lp_text = plate_text
                                 except Exception as e:
-                                    print(f"❌ OCR error: {e}")
+                                    pass  # Silent fail
+                            
+                            # Vẽ label với background
+                            label = f"{plate_text}"
+                            (text_w, text_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+                            label_y = max(text_h + 10, y1)
+                            cv2.rectangle(frame, (x1, label_y - text_h - 10), (x1 + text_w, label_y), (255, 0, 255), -1)
+                            cv2.putText(frame, label, (x1, label_y - 5),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
                 # Optional: vehicle-based license plate extraction every few frames
                 try:
@@ -1340,7 +1793,7 @@ def generate_frames_helmet(path_x):
                                         best_bbox = (px1, py1, px2, py2)
                                 if best_text:
                                     # Draw on frame and store recent
-                                    cv2.rectangle(frame, (vx1, vy1), (vx2, vy2), (255, 255, 0), 1)
+                                    # cv2.rectangle(frame, (vx1, vy1), (vx2, vy2), (255, 255, 0), 1)  # BỎ VẼ BOX XE MÀU VÀNG
                                     if best_bbox:
                                         cv2.rectangle(frame, (best_bbox[0], best_bbox[1]), (best_bbox[2], best_bbox[3]), (0, 255, 255), 2)
                                     cv2.putText(frame, f"LP:{best_text}", (vx1, max(0, vy1-5)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
@@ -1501,10 +1954,18 @@ def camera_1():
 
 @app.route("/camera1")
 def video():
+    global lane_detection_data
+    
     # Check if video has been uploaded for lane detection
     uploaded_video = session.get('uploaded_video_lane')
     if not uploaded_video:
         return "No video uploaded for lane detection", 400
+    
+    # Get video_id from session
+    video_id = session.get('current_video_id_lane')
+    if video_id:
+        lane_detection_data['video_id'] = video_id
+        print(f"✅ Set video_id for lane detection: {video_id}")
     
     return Response(generate_frames_lane(path_x=uploaded_video),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -1527,8 +1988,12 @@ def video_2():
     
     print(f"DEBUG camera2: Starting helmet video stream for {uploaded_video}")
     
-    # Use helmet detection streaming
-    return Response(generate_frames_helmet(uploaded_video),
+    # Get video_id from session to pass to generator (avoid request context issues)
+    video_id = session.get('uploaded_video_helmet_id', None)
+    print(f"DEBUG camera2: video_id from session: {video_id}")
+    
+    # Use helmet detection streaming with video_id
+    return Response(generate_frames_helmet(uploaded_video, video_id=video_id),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
@@ -1599,9 +2064,31 @@ def process_red_light_video():
     if not os.path.exists(uploaded_video):
         return jsonify({'error': 'Video file not found'}), 400
     
+    # Get video_id from session (if database is connected)
+    video_id = session.get('uploaded_video_id', None)
+    print(f"🔍 [DEBUG - PROCESS] video_id from session: {video_id}")
+    print(f"🔍 [DEBUG - PROCESS] video_db is None: {video_db is None}")
+    print(f"🔍 [DEBUG - PROCESS] violation_db is None: {violation_db is None}")
+    
     try:
-        # Process the video using the new system
-        output_video, violation_count = process_red_light_video_complete(uploaded_video)
+        # Process the video using the new system with video_id and violation_db
+        print(f"🔍 [DEBUG - PROCESS] Calling process_red_light_video_complete with video_id={video_id}")
+        print(f"🔍 [DEBUG - PROCESS] Passing violation_db instance: {violation_db is not None}")
+        
+        output_video, violation_count = process_red_light_video_complete(
+            uploaded_video, 
+            output_dir="output",
+            video_id=video_id,
+            violation_db_instance=violation_db  # Pass violation_db instance
+        )
+        
+        # Update video status to 'completed' in database
+        if video_db is not None and video_id is not None:
+            try:
+                video_db.update_video_status(video_id, 'completed')
+                print(f"✅ [CAMERA 3 - PROCESS] Video status updated to completed: video_id={video_id}")
+            except Exception as e:
+                print(f"⚠️ [CAMERA 3 - PROCESS] Failed to update video status: {e}")
         
         # Get the CSV file (should be the latest one in output directory)
         output_dir = "output"
@@ -1619,11 +2106,19 @@ def process_red_light_video():
             'output_video': output_video,
             'violation_count': violation_count,
             'csv_path': csv_path,
+            'video_id': video_id,
             'message': f'Video processed successfully. Found {violation_count} violations.'
         })
         
     except Exception as e:
         print(f"ERROR processing video: {str(e)}")
+        # Update video status to 'failed' in database
+        if video_db is not None and video_id is not None:
+            try:
+                video_db.update_video_status(video_id, 'failed')
+                print(f"⚠️ [CAMERA 3 - PROCESS] Video status updated to failed: video_id={video_id}")
+            except Exception as db_error:
+                print(f"⚠️ [CAMERA 3 - PROCESS] Failed to update video status to failed: {db_error}")
         return jsonify({'error': f'Processing failed: {str(e)}'}), 500
 
 # Route to download processed video
@@ -1683,6 +2178,32 @@ def upload_video():
         session['uploaded_video'] = filepath
         session['red_light_advanced'] = True
         
+        # Save to database if connection is available (Camera 3 = Red Light)
+        video_id = None
+        print(f"🔍 [DEBUG - UPLOAD] video_db is None: {video_db is None}")
+        
+        if video_db is not None:
+            try:
+                print(f"🔍 [DEBUG - UPLOAD] Calling insert_video with camera_id=3, video_filename={filename}")
+                video_id = video_db.insert_video(
+                    camera_id=3,  # Camera 3 for red light detection
+                    video_filename=filename,  # Changed from 'filename' to 'video_filename'
+                    video_path=filepath,      # Changed from 'filepath' to 'video_path'
+                    file_size_mb=None,
+                    duration_seconds=None,
+                    fps=None,
+                    resolution=None
+                )
+                session['uploaded_video_id'] = video_id
+                print(f"✅✅✅ [UPLOAD SUCCESS] Video saved to database: video_id={video_id}")
+                print(f"✅ [CAMERA 3 - UPLOAD] Session updated with video_id={video_id}")
+            except Exception as e:
+                print(f"❌❌❌ [UPLOAD ERROR] Failed to save video to database: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print("⚠️⚠️⚠️ [CAMERA 3 - UPLOAD] Database not connected (video_db is None)")
+        
         print(f"DEBUG upload_video: Session updated - uploaded_video = {session.get('uploaded_video')}")
         print(f"DEBUG upload_video: Session keys: {list(session.keys())}")
         
@@ -1694,6 +2215,7 @@ def upload_video():
             'filename': filename,
             'detection_method': detection_method,
             'filepath': filepath,  # Add this for debugging
+            'video_id': video_id,  # Include video_id in response
             'message': f'Video uploaded successfully! Using {detection_method} detection method.'
         })
     
@@ -1723,12 +2245,39 @@ def upload_video_helmet():
         os.makedirs('processed_videos', exist_ok=True)
         output_path = os.path.join('processed_videos', f'{job_id}_processed.mp4')
         
+        # Save to database if connection is available (Camera 2 = Helmet)
+        video_id = None
+        print(f"🔍 [DEBUG - HELMET UPLOAD] video_db is None: {video_db is None}")
+        
+        if video_db is not None:
+            try:
+                print(f"🔍 [DEBUG - HELMET UPLOAD] Calling insert_video with camera_id=2, video_filename={filename}")
+                video_id = video_db.insert_video(
+                    camera_id=2,  # Camera 2 for helmet detection
+                    video_filename=filename,
+                    video_path=filepath,
+                    file_size_mb=None,
+                    duration_seconds=None,
+                    fps=None,
+                    resolution=None
+                )
+                session['uploaded_video_helmet_id'] = video_id
+                print(f"✅✅✅ [HELMET UPLOAD SUCCESS] Video saved to database: video_id={video_id}")
+                print(f"✅ [CAMERA 2 - UPLOAD] Session updated with video_id={video_id}")
+            except Exception as e:
+                print(f"❌❌❌ [HELMET UPLOAD ERROR] Failed to save video to database: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print("⚠️⚠️⚠️ [CAMERA 2 - UPLOAD] Database not connected (video_db is None)")
+        
         # Store processing info in session
         session['helmet_processing'] = {
             'job_id': job_id,
             'status': 'processing',
             'input_path': filepath,
-            'output_path': output_path
+            'output_path': output_path,
+            'video_id': video_id
         }
         
         # Store uploaded video path for streaming
@@ -1743,6 +2292,7 @@ def upload_video_helmet():
             'success': True, 
             'filename': filename,
             'job_id': job_id,
+            'video_id': video_id,  # Include video_id in response
             'message': 'Video đang được xử lý. Vui lòng đợi...',
             'processing_url': '/process_helmet_now'
         })
@@ -1756,7 +2306,8 @@ def upload_video_helmet():
             'input': filepath,
             'output': output_path,
             'job_id': job_id,
-            'use_advanced': use_advanced
+            'use_advanced': use_advanced,
+            'video_id': video_id  # Pass video_id for database operations
         }
         
         return response
@@ -1810,6 +2361,8 @@ def process_helmet_now():
 # Route to upload video for lane detection
 @app.route("/upload_video_lane", methods=['POST'])
 def upload_video_lane():
+    global video_db
+    
     if 'video' not in request.files:
         return jsonify({'error': 'No video file provided'}), 400
     
@@ -1825,9 +2378,30 @@ def upload_video_lane():
         # Store in session
         session['uploaded_video_lane'] = filepath
         
+        # Insert video vào database
+        video_id = None
+        if video_db:
+            try:
+                # Get video info
+                file_size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                
+                video_id = video_db.insert_video(
+                    camera_id=1,  # Camera 1 for lane detection
+                    video_filename=filename,
+                    video_path=filepath,
+                    file_size_mb=round(file_size_mb, 2)
+                )
+                
+                if video_id:
+                    session['current_video_id_lane'] = video_id
+                    print(f"✅ Video inserted to DB: video_id={video_id}")
+            except Exception as e:
+                print(f"⚠️ Failed to insert video to DB: {e}")
+        
         return jsonify({
             'success': True, 
             'filename': filename,
+            'video_id': video_id,
             'message': 'Video uploaded successfully for lane detection!'
         })
     
@@ -2055,6 +2629,15 @@ def start_helmet_detection():
     print(f"🚀 Starting helmet detection for: {uploaded_video}")
     helmet_detection_active = True
     
+    # Update video status to 'processing' in database
+    video_id = session.get('uploaded_video_helmet_id')
+    if video_db is not None and video_id is not None:
+        try:
+            video_db.update_video_status(video_id, 'processing')
+            print(f"✅ [CAMERA 2 - START] Video status updated to processing: video_id={video_id}")
+        except Exception as e:
+            print(f"⚠️ [CAMERA 2 - START] Failed to update video status: {e}")
+    
     # Reset helmet detection data
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     helmet_detection_data = {
@@ -2096,6 +2679,15 @@ def stop_helmet_detection():
     
     print("🛑 Nhận yêu cầu dừng helmet detection từ web...")
     helmet_detection_active = False
+    
+    # Update video status to 'completed' in database
+    video_id = session.get('uploaded_video_helmet_id')
+    if video_db is not None and video_id is not None:
+        try:
+            video_db.update_video_status(video_id, 'completed')
+            print(f"✅ [CAMERA 2 - STOP] Video status updated to completed: video_id={video_id}")
+        except Exception as e:
+            print(f"⚠️ [CAMERA 2 - STOP] Failed to update video status: {e}")
     
     # Đợi để detection dừng hoàn toàn
     time.sleep(2)
@@ -2821,6 +3413,439 @@ def get_session_status():
     })
 
 
+# =============================================================================
+# NEW DATABASE API ENDPOINTS
+# =============================================================================
+
+@app.route('/api/upload_video_db', methods=['POST'])
+def upload_video_db():
+    """
+    Upload video and save to database
+    Form data: 'video' file, 'camera_id' (1, 2, or 3)
+    """
+    if 'video' not in request.files:
+        return jsonify({'error': 'No video file'}), 400
+    
+    if 'camera_id' not in request.form:
+        return jsonify({'error': 'No camera_id specified'}), 400
+    
+    file = request.files['video']
+    camera_id = int(request.form['camera_id'])
+    
+    if file.filename == '':
+        return jsonify({'error': 'Empty filename'}), 400
+    
+    if camera_id not in [1, 2, 3]:
+        return jsonify({'error': 'Invalid camera_id. Must be 1, 2, or 3'}), 400
+    
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'Invalid file type'}), 400
+    
+    try:
+        # Save file
+        from werkzeug.utils import secure_filename
+        filename = secure_filename(file.filename)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"cam{camera_id}_{timestamp}_{filename}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        print(f"✅ File saved: {filepath}")
+        
+        # Get video properties
+        cap = cv2.VideoCapture(filepath)
+        if cap.isOpened():
+            fps = int(cap.get(cv2.CAP_PROP_FPS))
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            duration = frame_count / fps if fps > 0 else 0
+            file_size = os.path.getsize(filepath) / (1024 * 1024)
+            cap.release()
+            
+            props = {
+                'fps': fps,
+                'resolution': f"{width}x{height}",
+                'duration_seconds': duration,
+                'file_size_mb': round(file_size, 2)
+            }
+        else:
+            props = {}
+        
+        # Insert to database if available
+        video_id = None
+        if video_db:
+            try:
+                video_id = video_db.insert_video(
+                    camera_id=camera_id,
+                    video_filename=filename,
+                    video_path=filepath,
+                    file_size_mb=props.get('file_size_mb'),
+                    duration_seconds=int(props.get('duration_seconds', 0)),
+                    fps=props.get('fps'),
+                    resolution=props.get('resolution')
+                )
+                print(f"✅ Video saved to database with ID: {video_id}")
+            except Exception as e:
+                print(f"⚠️ Database insert failed: {e}")
+        
+        # Store in session for processing
+        if camera_id == 1:
+            session['uploaded_video_lane'] = filepath
+        elif camera_id == 2:
+            session['uploaded_video_helmet'] = filepath
+        else:
+            session['uploaded_video'] = filepath
+        
+        return jsonify({
+            'success': True,
+            'video_id': video_id,
+            'camera_id': camera_id,
+            'camera_name': f"Camera {camera_id}",
+            'filename': filename,
+            'properties': props,
+            'message': f'Video uploaded successfully for Camera {camera_id}'
+        })
+        
+    except Exception as e:
+        print(f"❌ Upload error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/stats/overall')
+def get_overall_stats_api():
+    """Get overall statistics from database with detailed breakdown"""
+    try:
+        if stats_db:
+            overall_stats = stats_db.get_overall_stats()
+            today = datetime.date.today()
+            
+            detailed_stats = []
+            total_all_time = 0
+            total_today = 0
+            
+            for camera in overall_stats:
+                camera_id = camera['camera_id']
+                camera_type = camera['camera_type']
+                
+                # Get detailed stats per camera
+                if camera_type == 'lane':
+                    # All time
+                    lane_stats = stats_db.get_lane_stats(camera_id)
+                    motor_all = sum(s['count'] for s in lane_stats if s['violation_type'] == 'motor_in_car_lane')
+                    car_all = sum(s['count'] for s in lane_stats if s['violation_type'] == 'car_in_motor_lane')
+                    
+                    # Today
+                    lane_today = stats_db.get_lane_stats(camera_id, date=today)
+                    motor_today = sum(s['count'] for s in lane_today if s['violation_type'] == 'motor_in_car_lane')
+                    car_today = sum(s['count'] for s in lane_today if s['violation_type'] == 'car_in_motor_lane')
+                    
+                    detailed_stats.append({
+                        'camera_id': camera_id,
+                        'camera_name': camera['camera_name'],
+                        'camera_type': camera_type,
+                        'total_all_time': motor_all + car_all,
+                        'total_today': motor_today + car_today,
+                        'breakdown': {
+                            'motor_violations': motor_all,
+                            'car_violations': car_all,
+                            'motor_today': motor_today,
+                            'car_today': car_today
+                        }
+                    })
+                    total_all_time += motor_all + car_all
+                    total_today += motor_today + car_today
+                    
+                elif camera_type == 'helmet':
+                    # All time
+                    helmet_stats = stats_db.get_helmet_stats(camera_id)
+                    no_helmet_all = helmet_stats['no_helmet_count'] if helmet_stats and helmet_stats.get('no_helmet_count') is not None else 0
+                    
+                    # Today
+                    helmet_today = stats_db.get_helmet_stats(camera_id, date=today)
+                    no_helmet_today = helmet_today['no_helmet_count'] if helmet_today and helmet_today.get('no_helmet_count') is not None else 0
+                    
+                    detailed_stats.append({
+                        'camera_id': camera_id,
+                        'camera_name': camera['camera_name'],
+                        'camera_type': camera_type,
+                        'total_all_time': no_helmet_all or 0,
+                        'total_today': no_helmet_today or 0,
+                        'breakdown': {
+                            'no_helmet': no_helmet_all or 0,
+                            'no_helmet_today': no_helmet_today or 0
+                        }
+                    })
+                    total_all_time += (no_helmet_all or 0)
+                    total_today += (no_helmet_today or 0)
+                    
+                elif camera_type == 'red_light':
+                    # All time
+                    redlight_stats = stats_db.get_red_light_stats(camera_id)
+                    violations_all = redlight_stats['violation_count'] if redlight_stats and redlight_stats.get('violation_count') is not None else 0
+                    
+                    # Today
+                    redlight_today = stats_db.get_red_light_stats(camera_id, date=today)
+                    violations_today = redlight_today['violation_count'] if redlight_today and redlight_today.get('violation_count') is not None else 0
+                    
+                    detailed_stats.append({
+                        'camera_id': camera_id,
+                        'camera_name': camera['camera_name'],
+                        'camera_type': camera_type,
+                        'total_all_time': violations_all or 0,
+                        'total_today': violations_today or 0,
+                        'breakdown': {
+                            'red_light_violations': violations_all or 0,
+                            'red_light_today': violations_today or 0
+                        }
+                    })
+                    total_all_time += (violations_all or 0)
+                    total_today += (violations_today or 0)
+            
+            return jsonify({
+                'success': True,
+                'summary': {
+                    'total_violations_all_time': total_all_time,
+                    'total_violations_today': total_today
+                },
+                'cameras': detailed_stats,
+                'source': 'database'
+            })
+    except Exception as e:
+        print(f"⚠️ Database error: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    # Fallback
+    return jsonify({
+        'success': True,
+        'summary': {
+            'total_violations_all_time': 0,
+            'total_violations_today': 0
+        },
+        'cameras': [
+            {'camera_id': 1, 'camera_name': 'Camera 1', 'camera_type': 'lane', 
+             'total_all_time': 0, 'total_today': 0, 'breakdown': {}},
+            {'camera_id': 2, 'camera_name': 'Camera 2', 'camera_type': 'helmet', 
+             'total_all_time': 0, 'total_today': 0, 'breakdown': {}},
+            {'camera_id': 3, 'camera_name': 'Camera 3', 'camera_type': 'red_light', 
+             'total_all_time': 0, 'total_today': 0, 'breakdown': {}}
+        ],
+        'source': 'fallback'
+    })
+
+
+@app.route('/api/stats/<int:camera_id>')
+def get_camera_stats_api(camera_id):
+    """Get statistics for specific camera"""
+    try:
+        if stats_db:
+            if camera_id == 1:
+                stats = stats_db.get_lane_stats(camera_id)
+            elif camera_id == 2:
+                stats = stats_db.get_helmet_stats(camera_id)
+            elif camera_id == 3:
+                stats = stats_db.get_red_light_stats(camera_id)
+            else:
+                return jsonify({'error': 'Invalid camera_id'}), 400
+            
+            return jsonify({
+                'camera_id': camera_id,
+                'camera_name': f"Camera {camera_id}",
+                'stats': stats,
+                'source': 'database'
+            })
+    except Exception as e:
+        print(f"⚠️ Database error: {e}")
+    
+    return jsonify({
+        'camera_id': camera_id,
+        'stats': None,
+        'source': 'fallback'
+    })
+
+
+# ============================================================================
+# GEMINI AI CHATBOT ENDPOINTS
+# ============================================================================
+
+@app.route('/api/chat', methods=['POST'])
+def chat_with_ai():
+    """
+    Endpoint chính để chat với AI
+    
+    Request body:
+        {
+            "message": "Hôm nay có bao nhiêu vi phạm?"
+        }
+    
+    Response:
+        {
+            "success": true,
+            "response": "...",
+            "timestamp": "..."
+        }
+    """
+    try:
+        if not CHATBOT_AVAILABLE or not chatbot:
+            return jsonify({
+                'success': False,
+                'error': 'Chatbot không khả dụng. Vui lòng kiểm tra cấu hình GEMINI_API_KEY.',
+                'response': 'Xin lỗi, chatbot hiện không hoạt động. Vui lòng liên hệ quản trị viên.'
+            }), 503
+        
+        data = request.get_json()
+        if not data or 'message' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Missing message in request body'
+            }), 400
+        
+        user_message = data['message'].strip()
+        if not user_message:
+            return jsonify({
+                'success': False,
+                'error': 'Message cannot be empty'
+            }), 400
+        
+        # Gọi chatbot xử lý
+        result = chatbot.chat(user_message)
+        
+        return jsonify({
+            'success': result['success'],
+            'response': result['response'],
+            'error': result.get('error'),
+            'timestamp': datetime.datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        print(f"❌ Chat API error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'response': 'Đã xảy ra lỗi khi xử lý câu hỏi. Vui lòng thử lại.'
+        }), 500
+
+
+@app.route('/api/chat/suggestions', methods=['GET'])
+def get_chat_suggestions():
+    """
+    Lấy danh sách câu hỏi gợi ý
+    
+    Response:
+        {
+            "success": true,
+            "suggestions": [...]
+        }
+    """
+    try:
+        if not CHATBOT_AVAILABLE or not chatbot:
+            return jsonify({
+                'success': True,
+                'suggestions': [
+                    "Hôm nay có bao nhiêu vi phạm?",
+                    "Thống kê vi phạm vượt đèn đỏ",
+                    "Vượt đèn đỏ phạt bao nhiêu?",
+                    "Không đội mũ bảo hiểm phạt thế nào?"
+                ]
+            })
+        
+        suggestions = chatbot.suggest_questions()
+        return jsonify({
+            'success': True,
+            'suggestions': suggestions
+        })
+        
+    except Exception as e:
+        print(f"❌ Suggestions API error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/chat/quick-stats', methods=['GET'])
+def get_quick_stats_for_chat():
+    """
+    Lấy thống kê nhanh để hiển thị trong chat
+    
+    Response:
+        {
+            "success": true,
+            "stats": {...}
+        }
+    """
+    try:
+        if chatbot:
+            stats = chatbot.get_quick_stats()
+            return jsonify({
+                'success': True,
+                'stats': stats
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Chatbot not available'
+            }), 503
+            
+    except Exception as e:
+        print(f"❌ Quick stats API error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/chat/status', methods=['GET'])
+def get_chatbot_status():
+    """
+    Kiểm tra trạng thái chatbot
+    
+    Response:
+        {
+            "available": true,
+            "ready": true,
+            "message": "..."
+        }
+    """
+    return jsonify({
+        'available': CHATBOT_AVAILABLE,
+        'ready': chatbot is not None,
+        'message': 'Chatbot sẵn sàng' if chatbot else 'Chatbot chưa được khởi tạo'
+    })
+
+
 if __name__ == "__main__":
+    print("=" * 70)
+    print("🚦 TRAFFIC MONITORING SYSTEM")
+    print("=" * 70)
+    print("\n📹 Camera Configuration:")
+    print("   Camera 1: Lane Detection (Phát hiện làn đường)")
+    print("   Camera 2: Helmet Detection (Phát hiện mũ bảo hiểm)")
+    print("   Camera 3: Red Light Detection (Phát hiện vượt đèn đỏ)")
+    print("\n")
+    
+    # Auto-initialize database with configured password
+    print("🔄 Initializing database connection...")
+    try:
+        # Sử dụng password từ config
+        password = '12345678'  # MySQL root password
+        if init_database(password):
+            print("✅ Database connected! Using MySQL for data storage.")
+            print(f"   - Host: localhost")
+            print(f"   - User: root")
+            print(f"   - Database: traffic_monitoring")
+        else:
+            print("⚠️ Database connection failed. Running without database.")
+            print("   Tip: Kiểm tra MySQL service đang chạy và password đúng")
+    except Exception as e:
+        print(f"⚠️ Database initialization error: {e}")
+        print("⚠️ Running without database support.")
+        import traceback
+        traceback.print_exc()
+    
+    print("\n🌐 Starting Flask server...")
     webbrowser.open('http://127.0.0.1:8000/')
     app.run(host="0.0.0.0", port=8000, debug=True, use_reloader=True)
