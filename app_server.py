@@ -766,25 +766,165 @@ def video_detection_web(path_x=""):
         cv2.destroyAllWindows()
         
         # SAU KHI release video writer, mới export kết quả
-        print("📦 Tự động xuất kết quả CSV/Excel/JSON...")
+        print("📦 Tự động xuất kết quả CSV/Excel/JSON TỪ DATABASE...")
         try:
-            violations_data = lane_detection_data.get('violations', [])
             timestamp = lane_detection_data.get('timestamp', datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
             output_path = lane_detection_data.get('output_path', '')
+            video_id = lane_detection_data.get('video_id')
             
             output_dir = "output"
             os.makedirs(output_dir, exist_ok=True)
+            
+            # ========== LẤY DỮ LIỆU TỪ DATABASE THAY VÌ MEMORY ==========
+            violations_data = []
+            motor_count_db = 0
+            car_count_db = 0
+            
+            if video_id and violation_db:
+                print(f"📊 Đang truy vấn dữ liệu vi phạm từ database (video_id={video_id})...")
+                try:
+                    # Truy vấn tất cả vi phạm của video này từ database
+                    query = """
+                        SELECT 
+                            violation_id,
+                            frame_number,
+                            time_in_video,
+                            violation_type,
+                            vehicle_type,
+                            confidence,
+                            bbox_x1, bbox_y1, bbox_x2, bbox_y2,
+                            detected_at
+                        FROM lane_violations
+                        WHERE video_id = %s
+                        ORDER BY frame_number ASC
+                    """
+                    db_results = violation_db.db.execute_query(query, (video_id,), fetch=True)
+                    
+                    if db_results:
+                        print(f"✅ Lấy được {len(db_results)} vi phạm từ database cho video_id={video_id}")
+                        
+                        # Chuyển đổi sang format cho export
+                        for row in db_results:
+                            time_seconds = row.get('time_in_video', 0)
+                            violation_info = {
+                                'violation_id': row.get('violation_id'),
+                                'frame_number': row.get('frame_number'),
+                                'time_seconds': time_seconds,
+                                'time_formatted': f"{int(time_seconds // 60):02d}:{int(time_seconds % 60):02d}",
+                                'violation_type': row.get('violation_type'),
+                                'vehicle_type': row.get('vehicle_type'),
+                                'confidence': row.get('confidence'),
+                                'bbox': [
+                                    row.get('bbox_x1'),
+                                    row.get('bbox_y1'),
+                                    row.get('bbox_x2'),
+                                    row.get('bbox_y2')
+                                ],
+                                'detected_at': row.get('detected_at').strftime('%Y-%m-%d %H:%M:%S') if row.get('detected_at') else ''
+                            }
+                            violations_data.append(violation_info)
+                            
+                            # Đếm theo loại
+                            if row.get('violation_type') == 'motor_in_car_lane':
+                                motor_count_db += 1
+                            elif row.get('violation_type') == 'car_in_motor_lane':
+                                car_count_db += 1
+                        
+                        print(f"📊 Thống kê từ DB (video_id={video_id}): Xe máy={motor_count_db}, Ô tô={car_count_db}, Tổng={len(violations_data)}")
+                    else:
+                        print(f"⚠️ Không tìm thấy vi phạm cho video_id={video_id}, đang lấy TẤT CẢ dữ liệu từ database...")
+                        
+                        # FALLBACK: Lấy TẤT CẢ vi phạm từ database (không filter video_id)
+                        query_all = """
+                            SELECT 
+                                v.violation_id,
+                                v.video_id,
+                                vid.video_filename,
+                                v.frame_number,
+                                v.time_in_video,
+                                v.violation_type,
+                                v.vehicle_type,
+                                v.confidence,
+                                v.bbox_x1, v.bbox_y1, v.bbox_x2, v.bbox_y2,
+                                v.detected_at
+                            FROM lane_violations v
+                            LEFT JOIN videos vid ON v.video_id = vid.video_id
+                            WHERE v.camera_id = 1
+                            ORDER BY v.detected_at DESC
+                            LIMIT 100
+                        """
+                        db_results_all = violation_db.db.execute_query(query_all, fetch=True)
+                        
+                        if db_results_all:
+                            print(f"✅ Lấy được {len(db_results_all)} vi phạm TỪ TẤT CẢ VIDEO trong database")
+                            
+                            for row in db_results_all:
+                                time_seconds = row.get('time_in_video', 0)
+                                violation_info = {
+                                    'violation_id': row.get('violation_id'),
+                                    'video_id': row.get('video_id'),
+                                    'video_filename': row.get('video_filename', 'N/A'),
+                                    'frame_number': row.get('frame_number'),
+                                    'time_seconds': time_seconds,
+                                    'time_formatted': f"{int(time_seconds // 60):02d}:{int(time_seconds % 60):02d}",
+                                    'violation_type': row.get('violation_type'),
+                                    'vehicle_type': row.get('vehicle_type'),
+                                    'confidence': row.get('confidence'),
+                                    'bbox': [
+                                        row.get('bbox_x1'),
+                                        row.get('bbox_y1'),
+                                        row.get('bbox_x2'),
+                                        row.get('bbox_y2')
+                                    ],
+                                    'detected_at': row.get('detected_at').strftime('%Y-%m-%d %H:%M:%S') if row.get('detected_at') else ''
+                                }
+                                violations_data.append(violation_info)
+                                
+                                # Đếm theo loại
+                                if row.get('violation_type') == 'motor_in_car_lane':
+                                    motor_count_db += 1
+                                elif row.get('violation_type') == 'car_in_motor_lane':
+                                    car_count_db += 1
+                            
+                            print(f"📊 Thống kê từ DB (TẤT CẢ): Xe máy={motor_count_db}, Ô tô={car_count_db}, Tổng={len(violations_data)}")
+                        else:
+                            print(f"❌ KHÔNG CÓ DỮ LIỆU TRONG DATABASE!")
+                        
+                except Exception as db_error:
+                    print(f"❌ Lỗi khi truy vấn database: {db_error}")
+                    import traceback
+                    traceback.print_exc()
+                    # Fallback về memory nếu database lỗi
+                    violations_data = lane_detection_data.get('violations', [])
+                    motor_count_db = lane_detection_data.get('motor_violations', 0)
+                    car_count_db = lane_detection_data.get('car_violations', 0)
+                    print(f"⚠️ Fallback: Sử dụng dữ liệu từ memory")
+            else:
+                # Không có database hoặc video_id, dùng memory
+                print(f"⚠️ Không có database connection hoặc video_id, sử dụng dữ liệu từ memory")
+                violations_data = lane_detection_data.get('violations', [])
+                motor_count_db = lane_detection_data.get('motor_violations', 0)
+                car_count_db = lane_detection_data.get('car_violations', 0)
+            
+            # ========== XUẤT CSV/EXCEL/JSON TỪ DỮ LIỆU DATABASE ==========
             
             # Xuất CSV
             csv_filename = os.path.join(output_dir, f"lane_violations_stats_{timestamp}.csv")
             if len(violations_data) > 0:
                 df = pd.DataFrame(violations_data)
+                # Map violation_type sang tiếng Việt
+                violation_type_map = {
+                    'motor_in_car_lane': 'Xe máy vi phạm làn ô tô',
+                    'car_in_motor_lane': 'Ô tô vi phạm làn xe máy'
+                }
+                if 'violation_type' in df.columns:
+                    df['violation_type_vn'] = df['violation_type'].map(violation_type_map)
             else:
                 # Tạo DataFrame rỗng với các columns chuẩn
-                df = pd.DataFrame(columns=['frame', 'time_seconds', 'time_formatted', 'violation_type', 
-                                          'vehicle_class', 'confidence', 'vehicle_id'])
+                df = pd.DataFrame(columns=['violation_id', 'frame_number', 'time_seconds', 'time_formatted', 
+                                          'violation_type', 'vehicle_type', 'confidence', 'detected_at'])
             df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
-            print(f"✅ Đã xuất lane CSV: {csv_filename} ({len(violations_data)} vi phạm)")
+            print(f"✅ Đã xuất lane CSV từ DB: {csv_filename} ({len(violations_data)} vi phạm)")
             
             # Lưu filename vào global data để endpoint stop có thể trả về
             lane_detection_data['csv_filename'] = csv_filename
@@ -792,8 +932,60 @@ def video_detection_web(path_x=""):
             # Xuất Excel
             xlsx_filename = os.path.join(output_dir, f"lane_violations_stats_{timestamp}.xlsx")
             try:
-                df.to_excel(xlsx_filename, index=False, engine='openpyxl')
-                print(f"✅ Đã xuất lane Excel: {xlsx_filename} ({len(violations_data)} vi phạm)")
+                with pd.ExcelWriter(xlsx_filename, engine='openpyxl') as writer:
+                    # Sheet 1: Chi tiết vi phạm
+                    df_export = df.copy()
+                    if len(df_export) > 0:
+                        # Chọn columns để export
+                        export_cols = ['violation_id', 'frame_number', 'time_formatted', 
+                                      'violation_type_vn', 'vehicle_type', 'confidence', 'detected_at']
+                        export_cols = [col for col in export_cols if col in df_export.columns]
+                        df_export = df_export[export_cols]
+                        
+                        # Đổi tên columns sang tiếng Việt
+                        df_export.columns = ['ID Vi Phạm', 'Frame', 'Thời Gian', 
+                                            'Loại Vi Phạm', 'Loại Xe', 'Độ Tin Cậy', 'Thời Điểm']
+                    
+                    df_export.to_excel(writer, sheet_name='Vi Phạm', index=False)
+                    
+                    # Sheet 2: Thống kê
+                    summary_data = {
+                        'Chỉ Số': [
+                            'Tổng Vi Phạm',
+                            'Xe Máy Vi Phạm Làn Ô Tô',
+                            'Ô Tô Vi Phạm Làn Xe Máy',
+                            'Video ID',
+                            'Timestamp',
+                            'Nguồn Dữ Liệu'
+                        ],
+                        'Giá Trị': [
+                            len(violations_data),
+                            motor_count_db,
+                            car_count_db,
+                            video_id or 'N/A',
+                            timestamp,
+                            'MySQL Database' if video_id and violation_db else 'Memory (No DB)'
+                        ]
+                    }
+                    df_summary = pd.DataFrame(summary_data)
+                    df_summary.to_excel(writer, sheet_name='Thống Kê', index=False)
+                    
+                    # Auto-adjust column width
+                    for sheet_name in writer.sheets:
+                        worksheet = writer.sheets[sheet_name]
+                        for column in worksheet.columns:
+                            max_length = 0
+                            column_letter = column[0].column_letter
+                            for cell in column:
+                                try:
+                                    if len(str(cell.value)) > max_length:
+                                        max_length = len(str(cell.value))
+                                except:
+                                    pass
+                            adjusted_width = min(max_length + 2, 50)
+                            worksheet.column_dimensions[column_letter].width = adjusted_width
+                
+                print(f"✅ Đã xuất lane Excel từ DB: {xlsx_filename} ({len(violations_data)} vi phạm)")
                 lane_detection_data['xlsx_filename'] = xlsx_filename
             except Exception as e:
                 print(f"⚠️ Không thể xuất Excel: {e}")
@@ -806,27 +998,28 @@ def video_detection_web(path_x=""):
             with open(json_filename, 'w', encoding='utf-8') as f:
                 json.dump({
                     'video_info': {
+                        'video_id': video_id,
                         'input_path': path_x,
                         'output_path': output_path,
                         'timestamp': timestamp,
                         'total_frames': frame_count,
                         'frames_processed': processed_count,
-                        'fps': original_fps
+                        'fps': original_fps,
+                        'data_source': 'MySQL Database' if video_id and violation_db else 'Memory'
                     },
                     'violations': violations_data,
                     'summary': {
                         'total_violations': len(violations_data),
-                        'motor_violations': lane_detection_data.get('motor_violations', 0),
-                        'car_violations': lane_detection_data.get('car_violations', 0),
+                        'motor_violations': motor_count_db,
+                        'car_violations': car_count_db,
                         'processing_time': time.time() - lane_detection_data.get('start_time', time.time()),
                         'frames_processed': frame_count
                     }
                 }, f, indent=2, ensure_ascii=False)
-            print(f"✅ Đã xuất lane JSON: {json_filename}")
+            print(f"✅ Đã xuất lane JSON từ DB: {json_filename}")
             lane_detection_data['json_filename'] = json_filename
             
             # Update video status to 'completed'
-            video_id = lane_detection_data.get('video_id')
             if video_id and video_db:
                 try:
                     video_db.update_video_status(video_id, 'completed')
@@ -834,8 +1027,8 @@ def video_detection_web(path_x=""):
                 except Exception as e:
                     print(f"⚠️ Failed to update video status: {e}")
             
-            print(f"📊 Tổng kết vi phạm: Xe máy={lane_detection_data['motor_violations']}, Ô tô={lane_detection_data['car_violations']}, Tổng={len(violations_data)}")
-            print(f"🎉 Đã xuất tất cả file thành công!")
+            print(f"📊 Tổng kết vi phạm (từ DB): Xe máy={motor_count_db}, Ô tô={car_count_db}, Tổng={len(violations_data)}")
+            print(f"🎉 Đã xuất tất cả file thành công từ DATABASE!")
             
             # Verify video có thể mở được không
             if output_path and os.path.exists(output_path):
@@ -2512,8 +2705,8 @@ def stop_lane_detection():
 # API để lấy trạng thái hiện tại
 @app.route("/lane_detection_status", methods=['GET'])
 def get_lane_detection_status():
-    """Lấy trạng thái hiện tại của lane detection với debug info chi tiết"""
-    global lane_detection_active, lane_detection_data
+    """Lấy thống kê từ DATABASE MySQL thay vì từ video đang chạy"""
+    global lane_detection_active, lane_detection_data, violation_db
     
     # Tính runtime
     if lane_detection_data.get('start_time') and isinstance(lane_detection_data['start_time'], (int, float)):
@@ -2522,24 +2715,70 @@ def get_lane_detection_status():
     else:
         runtime_seconds = 0
     
-    # Debug info để kiểm tra accuracy
+    # ========== LẤY THỐNG KÊ TỪ DATABASE ==========
+    motor_violations_db = 0
+    car_violations_db = 0
+    total_violations_db = 0
+    data_source = "Memory"
+    
+    if violation_db:
+        try:
+            # ===== LUÔN LUÔN LẤY TỔNG TẤT CẢ VI PHẠM (TÍCH LŨY) =====
+            # Không phân biệt video nào, đếm TỔNG từ database
+            query_all = """
+                SELECT 
+                    violation_type,
+                    COUNT(*) as count
+                FROM lane_violations
+                WHERE camera_id = 1
+                GROUP BY violation_type
+            """
+            results_all = violation_db.db.execute_query(query_all, fetch=True)
+            
+            if results_all:
+                for row in results_all:
+                    if row['violation_type'] == 'motor_in_car_lane':
+                        motor_violations_db = row['count']
+                    elif row['violation_type'] == 'car_in_motor_lane':
+                        car_violations_db = row['count']
+                
+                total_violations_db = motor_violations_db + car_violations_db
+                data_source = "Database (TỔNG TÍCH LŨY)"
+                print(f"📊 [STATUS API] TỔNG từ DB: Motor={motor_violations_db}, Car={car_violations_db}, Total={total_violations_db}")
+                    
+        except Exception as e:
+            print(f"❌ [STATUS API] Lỗi khi truy vấn database: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback về memory
+            motor_violations_db = lane_detection_data.get('motor_violations', 0)
+            car_violations_db = lane_detection_data.get('car_violations', 0)
+            total_violations_db = len(lane_detection_data.get('violations', []))
+            data_source = "Memory (DB error)"
+    else:
+        # Không có database, dùng memory
+        motor_violations_db = lane_detection_data.get('motor_violations', 0)
+        car_violations_db = lane_detection_data.get('car_violations', 0)
+        total_violations_db = len(lane_detection_data.get('violations', []))
+        data_source = "Memory (No DB)"
+    
+    # Debug info
     debug_info = {
+        'data_source': data_source,
         'active_cooldowns': len(lane_detection_data.get('violation_cooldown', {})),
         'active_vehicles': len(lane_detection_data.get('vehicle_states', {})),
         'violated_vehicles': sum(1 for state in lane_detection_data.get('vehicle_states', {}).values() if state.get('has_violated', False)),
         'frame_count': lane_detection_data.get('frame_count', 0),
         'timestamp': lane_detection_data.get('timestamp', 'N/A'),
-        'start_time': str(lane_detection_data.get('start_time', 'N/A')),
-        'violations_list_length': len(lane_detection_data.get('violations', [])),
-        'motor_count_direct': lane_detection_data.get('motor_violations', 0),
-        'car_count_direct': lane_detection_data.get('car_violations', 0)
+        'video_id': lane_detection_data.get('video_id', 'N/A'),
+        'db_available': violation_db is not None
     }
     
     return jsonify({
         'active': lane_detection_active,
-        'motor_violations': lane_detection_data.get('motor_violations', 0),
-        'car_violations': lane_detection_data.get('car_violations', 0), 
-        'total_violations': len(lane_detection_data.get('violations', [])),
+        'motor_violations': motor_violations_db,
+        'car_violations': car_violations_db, 
+        'total_violations': total_violations_db,
         'runtime': runtime_seconds,
         'runtime_formatted': f"{int(runtime_seconds//3600):02d}:{int((runtime_seconds%3600)//60):02d}:{int(runtime_seconds%60):02d}",
         'debug': debug_info,
@@ -2547,71 +2786,270 @@ def get_lane_detection_status():
     })
 
 
-# Route để download file đã xuất
-@app.route("/download_lane_results/<file_type>")
-def download_lane_results(file_type):
+# Route để download file đã xuất - HỖ TRỢ CẢ PATH PARAM VÀ QUERY PARAM
+@app.route("/download_lane_results", methods=['GET'])
+@app.route("/download_lane_results/<file_type>", methods=['GET'])
+def download_lane_results(file_type=None):
     """Download file kết quả lane detection (video, csv, excel, json)"""
     try:
         output_dir = "output"
-        timestamp = lane_detection_data.get('timestamp')
         
-        if not timestamp:
-            return "No results available", 404
+        # Lấy file_type từ query param nếu không có trong path
+        if file_type is None:
+            file_type = request.args.get('file_type')
         
-        if file_type == "video":
-            filename = f"lane_violations_{timestamp}.mp4"
-        elif file_type == "csv":
-            filename = f"lane_violations_stats_{timestamp}.csv"
-        elif file_type == "excel":
-            filename = f"lane_violations_stats_{timestamp}.xlsx"
-        elif file_type == "json":
-            filename = f"lane_violations_details_{timestamp}.json"
+        # Lấy filename trực tiếp từ query param nếu có
+        filename = request.args.get('filename')
+        
+        if filename:
+            # Sử dụng filename được cung cấp trực tiếp
+            file_path = os.path.join(output_dir, filename)
         else:
-            return "Invalid file type", 400
-        
-        file_path = os.path.join(output_dir, filename)
+            # Fallback: tự generate filename từ timestamp
+            timestamp = lane_detection_data.get('timestamp')
+            
+            if not timestamp:
+                return jsonify({"error": "No results available"}), 404
+            
+            if file_type == "video":
+                filename = f"lane_violations_{timestamp}.mp4"
+            elif file_type == "csv":
+                filename = f"lane_violations_stats_{timestamp}.csv"
+            elif file_type == "excel":
+                filename = f"lane_violations_stats_{timestamp}.xlsx"
+            elif file_type == "json":
+                filename = f"lane_violations_details_{timestamp}.json"
+            else:
+                return jsonify({"error": "Invalid file type"}), 400
+            
+            file_path = os.path.join(output_dir, filename)
         
         if os.path.exists(file_path):
+            print(f"📥 Downloading file: {file_path}")
             return send_file(file_path, as_attachment=True, download_name=filename)
         else:
-            return "File not found", 404
+            print(f"❌ File not found: {file_path}")
+            return jsonify({"error": f"File not found: {filename}"}), 404
             
     except Exception as e:
-        return f"Error downloading file: {str(e)}", 500
+        print(f"❌ Error downloading file: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Error downloading file: {str(e)}"}), 500
+
+
+# ============= EXPORT EXCEL FROM DATABASE =============
+
+@app.route("/export_lane_violations_excel", methods=['GET'])
+def export_lane_violations_excel():
+    """
+    Xuất file Excel thống kê vi phạm làn đường từ DATABASE MySQL
+    Thay vì từ video phân tích hiện tại
+    
+    Query parameters:
+        - camera_id: ID camera (mặc định: 1 - lane detection)
+        - date: Lọc theo ngày (format: YYYY-MM-DD, optional)
+        - limit: Giới hạn số bản ghi (mặc định: tất cả)
+    """
+    try:
+        if not violation_db:
+            return jsonify({"error": "Database not connected"}), 500
+        
+        # Lấy parameters
+        camera_id = request.args.get('camera_id', 1, type=int)
+        date_filter = request.args.get('date')  # YYYY-MM-DD
+        limit = request.args.get('limit', type=int)
+        
+        print(f"📊 Exporting lane violations from database (camera={camera_id}, date={date_filter}, limit={limit})...")
+        
+        # Truy vấn database
+        query = """
+            SELECT 
+                v.violation_id,
+                v.video_id,
+                vid.video_filename,
+                v.frame_number,
+                v.time_in_video,
+                v.violation_type,
+                v.vehicle_type,
+                v.confidence,
+                v.bbox_x1, v.bbox_y1, v.bbox_x2, v.bbox_y2,
+                v.image_path,
+                v.detected_at
+            FROM lane_violations v
+            LEFT JOIN videos vid ON v.video_id = vid.video_id
+            WHERE v.camera_id = %s
+        """
+        params = [camera_id]
+        
+        # Thêm filter theo ngày nếu có
+        if date_filter:
+            query += " AND DATE(v.detected_at) = %s"
+            params.append(date_filter)
+        
+        # Sắp xếp theo thời gian mới nhất
+        query += " ORDER BY v.detected_at DESC"
+        
+        # Thêm limit nếu có
+        if limit:
+            query += f" LIMIT {limit}"
+        
+        # Thực thi query
+        results = violation_db.db.execute_query(query, tuple(params), fetch=True)
+        
+        if not results:
+            return jsonify({"error": "No violations found in database"}), 404
+        
+        print(f"✅ Found {len(results)} violations in database")
+        
+        # Chuyển đổi sang DataFrame
+        df = pd.DataFrame(results)
+        
+        # Định dạng lại các cột
+        if 'detected_at' in df.columns:
+            df['detected_at'] = pd.to_datetime(df['detected_at']).dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        if 'time_in_video' in df.columns:
+            # Chuyển seconds thành MM:SS
+            df['time_formatted'] = df['time_in_video'].apply(
+                lambda x: f"{int(x // 60):02d}:{int(x % 60):02d}" if pd.notna(x) else ""
+            )
+        
+        # Map violation_type sang tiếng Việt
+        violation_type_map = {
+            'motor_in_car_lane': 'Xe máy vi phạm làn ô tô',
+            'car_in_motor_lane': 'Ô tô vi phạm làn xe máy'
+        }
+        df['violation_type_vn'] = df['violation_type'].map(violation_type_map)
+        
+        # Chọn và sắp xếp lại các cột
+        output_columns = [
+            'violation_id', 'video_filename', 'frame_number', 
+            'time_formatted', 'violation_type_vn', 'vehicle_type',
+            'confidence', 'detected_at'
+        ]
+        
+        # Chỉ giữ các cột tồn tại
+        output_columns = [col for col in output_columns if col in df.columns]
+        df_export = df[output_columns]
+        
+        # Đổi tên cột sang tiếng Việt
+        df_export.columns = [
+            'ID Vi Phạm', 'Tên Video', 'Frame', 
+            'Thời Gian (MM:SS)', 'Loại Vi Phạm', 'Loại Xe',
+            'Độ Tin Cậy', 'Thời Gian Phát Hiện'
+        ]
+        
+        # Tạo file Excel
+        output_dir = "output"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        excel_filename = f"lane_violations_database_{timestamp}.xlsx"
+        excel_path = os.path.join(output_dir, excel_filename)
+        
+        # Xuất Excel với formatting
+        with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+            df_export.to_excel(writer, sheet_name='Vi Phạm Làn Đường', index=False)
+            
+            # Lấy workbook và worksheet
+            workbook = writer.book
+            worksheet = writer.sheets['Vi Phạm Làn Đường']
+            
+            # Auto-adjust column width
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+            
+            # Thêm sheet thống kê
+            summary_data = {
+                'Chỉ Số': [
+                    'Tổng Vi Phạm',
+                    'Xe Máy Vi Phạm',
+                    'Ô Tô Vi Phạm',
+                    'Thời Gian Xuất'
+                ],
+                'Giá Trị': [
+                    len(results),
+                    len([r for r in results if r.get('violation_type') == 'motor_in_car_lane']),
+                    len([r for r in results if r.get('violation_type') == 'car_in_motor_lane']),
+                    datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                ]
+            }
+            df_summary = pd.DataFrame(summary_data)
+            df_summary.to_excel(writer, sheet_name='Thống Kê', index=False)
+        
+        print(f"✅ Excel exported: {excel_path}")
+        
+        # Trả về file
+        return send_file(excel_path, as_attachment=True, download_name=excel_filename)
+        
+    except Exception as e:
+        print(f"❌ Error exporting Excel from database: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Error exporting Excel: {str(e)}"}), 500
 
 
 # ============= HELMET DETECTION ENDPOINTS =============
 
-@app.route("/download_helmet_results/<file_type>")
-def download_helmet_results(file_type):
+@app.route("/download_helmet_results", methods=['GET'])
+@app.route("/download_helmet_results/<file_type>", methods=['GET'])
+def download_helmet_results(file_type=None):
     """Download helmet detection result files (video, csv, excel, json) for the current session"""
     try:
         output_dir = "output"
-        timestamp = helmet_detection_data.get('timestamp')
-
-        if not timestamp:
-            return "No helmet results available", 404
-
-        if file_type == "video":
-            filename = f"helmet_analysis_{timestamp}.mp4"
-        elif file_type == "csv":
-            filename = f"helmet_violations_stats_{timestamp}.csv"
-        elif file_type == "excel":
-            filename = f"helmet_violations_stats_{timestamp}.xlsx"
-        elif file_type == "json":
-            filename = f"helmet_violations_details_{timestamp}.json"
+        
+        # Lấy file_type từ query param nếu không có trong path
+        if file_type is None:
+            file_type = request.args.get('file_type')
+        
+        # Lấy filename trực tiếp từ query param nếu có
+        filename = request.args.get('filename')
+        
+        if filename:
+            # Sử dụng filename được cung cấp trực tiếp
+            file_path = os.path.join(output_dir, filename)
         else:
-            return "Invalid file type", 400
+            # Fallback: tự generate filename từ timestamp
+            timestamp = helmet_detection_data.get('timestamp')
 
-        file_path = os.path.join(output_dir, filename)
+            if not timestamp:
+                return jsonify({"error": "No helmet results available"}), 404
+
+            if file_type == "video":
+                filename = f"helmet_analysis_{timestamp}.mp4"
+            elif file_type == "csv":
+                filename = f"helmet_violations_stats_{timestamp}.csv"
+            elif file_type == "excel":
+                filename = f"helmet_violations_stats_{timestamp}.xlsx"
+            elif file_type == "json":
+                filename = f"helmet_violations_details_{timestamp}.json"
+            else:
+                return jsonify({"error": "Invalid file type"}), 400
+
+            file_path = os.path.join(output_dir, filename)
 
         if os.path.exists(file_path):
+            print(f"📥 Downloading helmet file: {file_path}")
             return send_file(file_path, as_attachment=True, download_name=filename)
         else:
-            return "File not found", 404
+            print(f"❌ Helmet file not found: {file_path}")
+            return jsonify({"error": f"File not found: {filename}"}), 404
 
     except Exception as e:
-        return f"Error downloading helmet file: {str(e)}", 500
+        print(f"❌ Error downloading helmet file: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Error downloading helmet file: {str(e)}"}), 500
 
 @app.route("/start_helmet_detection", methods=['POST'])
 def start_helmet_detection():
