@@ -532,12 +532,59 @@
       }
 
       .chatbot-suggestions {
+        border-top: 1px solid #e5e7eb;
+        background: white;
+        transition: max-height 0.3s ease;
+        overflow: hidden;
+      }
+
+      .chatbot-suggestions.collapsed {
+        max-height: 40px;
+      }
+
+      .chatbot-suggestions-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 20px;
+        background: #f8fafc;
+        border-bottom: 1px solid #e5e7eb;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .chatbot-suggestions-header:hover {
+        background: #f1f5f9;
+      }
+
+      .chatbot-suggestions-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: #64748b;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .chatbot-suggestions-toggle {
+        font-size: 14px;
+        color: #64748b;
+        transition: transform 0.3s ease;
+      }
+
+      .chatbot-suggestions.collapsed .chatbot-suggestions-toggle {
+        transform: rotate(-90deg);
+      }
+
+      .chatbot-suggestions-content {
         padding: 10px 20px;
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
-        border-top: 1px solid #e5e7eb;
-        background: white;
+      }
+
+      .chatbot-suggestions.collapsed .chatbot-suggestions-content {
+        display: none;
       }
 
       .chatbot-suggestion {
@@ -762,7 +809,10 @@
         <p class="footer-text">
           Ứng dụng trí tuệ nhân tạo để xây dựng giao thông an toàn và văn minh
         </p>
-        <p>&copy; 2024 Đại Học Bách Khoa Đà Nẵng. Tất cả quyền được bảo lưu.</p>
+        <p>
+          &copy; 2025 Đại Học Công Nghiệp Thành Phố Hồ Chí Minh. Tất cả quyền
+          được bảo lưu.
+        </p>
       </div>
     </footer>
 
@@ -804,7 +854,16 @@
       </div>
 
       <div class="chatbot-suggestions" id="chatbotSuggestions">
-        <!-- Suggestions will be loaded here -->
+        <div class="chatbot-suggestions-header" id="suggestionsToggle">
+          <div class="chatbot-suggestions-title">
+            <i class="fas fa-lightbulb"></i>
+            <span>Gợi ý câu hỏi</span>
+          </div>
+          <i class="fas fa-chevron-down chatbot-suggestions-toggle"></i>
+        </div>
+        <div class="chatbot-suggestions-content" id="suggestionsContent">
+          <!-- Suggestions will be loaded here -->
+        </div>
       </div>
 
       <div class="chatbot-input-area">
@@ -936,6 +995,24 @@
         const chatbotInput = document.getElementById("chatbotInput");
         const chatbotSend = document.getElementById("chatbotSend");
         const chatbotMessages = document.getElementById("chatbotMessages");
+        const suggestionsToggle = document.getElementById("suggestionsToggle");
+        const suggestionsContainer =
+          document.getElementById("chatbotSuggestions");
+
+        // Load saved suggestions state from localStorage
+        const suggestionsCollapsed =
+          localStorage.getItem("chatbot_suggestions_collapsed") === "true";
+        if (suggestionsCollapsed) {
+          suggestionsContainer.classList.add("collapsed");
+        }
+
+        // Toggle suggestions
+        suggestionsToggle.addEventListener("click", function () {
+          suggestionsContainer.classList.toggle("collapsed");
+          const isCollapsed =
+            suggestionsContainer.classList.contains("collapsed");
+          localStorage.setItem("chatbot_suggestions_collapsed", isCollapsed);
+        });
 
         // Toggle chatbot
         chatbotToggle.addEventListener("click", function () {
@@ -977,9 +1054,9 @@
           .then((response) => response.json())
           .then((data) => {
             if (data.success && data.suggestions) {
-              const suggestionsContainer =
-                document.getElementById("chatbotSuggestions");
-              suggestionsContainer.innerHTML = "";
+              const suggestionsContent =
+                document.getElementById("suggestionsContent");
+              suggestionsContent.innerHTML = "";
 
               // Show first 4 suggestions
               data.suggestions.slice(0, 4).forEach((suggestion) => {
@@ -990,7 +1067,7 @@
                   document.getElementById("chatbotInput").value = suggestion;
                   sendMessage();
                 };
-                suggestionsContainer.appendChild(btn);
+                suggestionsContent.appendChild(btn);
               });
             }
           })
