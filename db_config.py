@@ -37,7 +37,8 @@ class DatabaseConfig:
                 password=self.password,
                 database=self.database,
                 charset='utf8mb4',
-                collation='utf8mb4_unicode_ci'
+                collation='utf8mb4_unicode_ci',
+                connection_timeout=5  # Timeout after 5 seconds
             )
             
             if self.connection.is_connected():

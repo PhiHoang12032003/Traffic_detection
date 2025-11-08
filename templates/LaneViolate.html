@@ -740,57 +740,57 @@
             console.log("Stop response:", data);
             
             if (data.success) {
-              showAlert("success", "Đã dừng và xuất kết quả thành công!");
+              // ✅ Hiển thị success alert KHÔNG tự động ẩn
+              const successAlert = document.getElementById("successAlert");
+              successAlert.style.display = "block";
               
-              // Hiển thị links download
-              let downloadHTML = '<div class="mt-3"><h6>📥 Tải kết quả:</h6><ul class="list-group">';
+              // Tạo nội dung với links download
+              let alertContent = '<div style="display: flex; align-items: center; margin-bottom: 15px;"><i class="fas fa-check-circle" style="margin-right: 10px;"></i><strong>Video đã được tải lên thành công!</strong></div>';
+              alertContent += '<div style="background: white; padding: 15px; border-radius: 10px; margin-top: 10px;"><h6 style="color: #059669; margin-bottom: 10px;"><i class="fas fa-download"></i> Tải kết quả:</h6><ul style="list-style: none; padding: 0; margin: 0;">';
               
               if (data.files.video && data.files_exist.video) {
-                downloadHTML += `<li class="list-group-item">
-                  <a href="/download_lane_results?file_type=video&filename=${data.files.video}" class="btn btn-sm btn-primary" download>
+                alertContent += `<li style="margin-bottom: 8px;">
+                  <a href="/download_lane_results?file_type=video&filename=${data.files.video}" class="btn btn-primary" style="width: 100%; text-align: left; padding: 10px 15px;" download>
                     <i class="fas fa-video"></i> Video phân tích
                   </a>
                 </li>`;
               }
               
               if (data.files.csv && data.files_exist.csv) {
-                downloadHTML += `<li class="list-group-item">
-                  <a href="/download_lane_results?file_type=csv&filename=${data.files.csv}" class="btn btn-sm btn-success" download>
+                alertContent += `<li style="margin-bottom: 8px;">
+                  <a href="/download_lane_results?file_type=csv&filename=${data.files.csv}" class="btn btn-success" style="width: 100%; text-align: left; padding: 10px 15px;" download>
                     <i class="fas fa-file-csv"></i> File CSV
                   </a>
                 </li>`;
               }
               
               if (data.files.excel && data.files_exist.excel) {
-                downloadHTML += `<li class="list-group-item">
-                  <a href="/download_lane_results?file_type=excel&filename=${data.files.excel}" class="btn btn-sm btn-success" download>
-                    <i class="fas fa-file-excel"></i> File Excel ⭐
+                alertContent += `<li style="margin-bottom: 8px;">
+                  <a href="/download_lane_results?file_type=excel&filename=${data.files.excel}" class="btn btn-success" style="width: 100%; text-align: left; padding: 10px 15px;" download>
+                    <i class="fas fa-file-excel"></i> File Excel
                   </a>
                 </li>`;
               }
               
               if (data.files.json && data.files_exist.json) {
-                downloadHTML += `<li class="list-group-item">
-                  <a href="/download_lane_results?file_type=json&filename=${data.files.json}" class="btn btn-sm btn-info" download>
+                alertContent += `<li style="margin-bottom: 8px;">
+                  <a href="/download_lane_results?file_type=json&filename=${data.files.json}" class="btn btn-secondary" style="width: 100%; text-align: left; padding: 10px 15px; background: #6b7280;" download>
                     <i class="fas fa-file-code"></i> File JSON
                   </a>
                 </li>`;
               }
               
-              downloadHTML += '</ul></div>';
+              alertContent += '</ul></div>';
               
-              // Thêm download links vào alerts
-              const alertDiv = document.querySelector('.alert-success');
-              if (alertDiv) {
-                alertDiv.innerHTML += downloadHTML;
-              }
+              // Set nội dung vào alert
+              successAlert.innerHTML = alertContent;
               
               // Hiển thị thống kê
               if (data.summary) {
                 console.log(`📊 Tổng kết: ${data.summary.motor_violations} xe máy, ${data.summary.car_violations} ô tô`);
               }
             } else {
-              showAlert("danger", "Lỗi khi dừng: " + (data.error || "Unknown error"));
+              showAlert("error", "Lỗi khi dừng: " + (data.error || "Unknown error"));
             }
             
             document.getElementById("status").textContent = "Đã dừng";
@@ -799,7 +799,7 @@
           })
           .catch((error) => {
             console.error("Error stopping detection:", error);
-            showAlert("danger", "Lỗi khi dừng phát hiện: " + error.message);
+            showAlert("error", "Lỗi khi dừng phát hiện: " + error.message);
             document.getElementById("status").textContent = "Lỗi";
             document.getElementById("startBtn").disabled = false;
             document.getElementById("stopBtn").disabled = false;
@@ -869,7 +869,7 @@
         document.getElementById("runtime").textContent = "00:00:00";
       }
 
-      function showAlert(type, message) {
+      function showAlert(type, message, autoHide = true) {
         hideAllAlerts();
         const alert = document.getElementById(type + "Alert");
         if (type === "error") {
@@ -879,11 +879,14 @@
         }
         alert.style.display = "block";
 
-        if (type === "success" || type === "info") {
+        // Chỉ tự động ẩn nếu autoHide = true VÀ là info
+        // Success alert (có link download) sẽ KHÔNG tự động ẩn
+        if (type === "info" && autoHide) {
           setTimeout(() => {
             alert.style.display = "none";
           }, 3000);
         }
+        // Success alert giữ nguyên để user có thể download
       }
 
       function hideAllAlerts() {
@@ -902,28 +905,30 @@
         document.getElementById("loading").style.display = "none";
       }
 
-      // Simulate violation detection (for demo purposes)
+      // Cập nhật thống kê từ database (luôn chạy, không phụ thuộc vào video)
       function updateRealTimeStats() {
-        if (!isDetecting) return;
-
         fetch('/lane_detection_status')
           .then(response => response.json())
           .then(data => {
-            // Cập nhật thống kê thời gian thực từ server
+            // Cập nhật thống kê thời gian thực từ database
             document.getElementById("totalViolations").textContent = data.total_violations || 0;
             document.getElementById("motorViolations").textContent = data.motor_violations || 0;
             document.getElementById("carViolations").textContent = data.car_violations || 0;
             
-            // Cập nhật runtime nếu có
-            if (data.runtime_formatted) {
+            // Cập nhật runtime nếu đang detect
+            if (data.runtime_formatted && isDetecting) {
               document.getElementById("runtime").textContent = data.runtime_formatted;
             }
             
-            // Log để debug
-            console.log('📊 Real-time stats updated:', data);
+            // Log để debug (chỉ log nếu có thay đổi)
+            if (window.lastStatsData === undefined || 
+                JSON.stringify(window.lastStatsData) !== JSON.stringify(data)) {
+              console.log('📊 Stats updated from database:', data);
+              window.lastStatsData = data;
+            }
           })
           .catch(error => {
-            console.error('❌ Error fetching real-time stats:', error);
+            console.error('❌ Error fetching stats:', error);
           });
       }
 
@@ -957,11 +962,13 @@
         }
       }
 
-      // Cập nhật thống kê thời gian thực từ server mỗi 2 giây
+      // Cập nhật thống kê TỰ ĐỘNG từ database MySQL
+      // Load ngay khi mở trang
+      updateRealTimeStats();
+      
+      // Kiểm tra database MỖI 2 GIÂY - nếu có vi phạm mới → tự động cập nhật
       setInterval(() => {
-        if (isDetecting) {
-          updateRealTimeStats();
-        }
+        updateRealTimeStats();
       }, 2000);
     </script>
   </body>
