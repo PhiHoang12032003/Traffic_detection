@@ -1837,34 +1837,7 @@ def generate_frames_helmet(path_x, video_id=None):
                 helmet_detection_data['current_without'] = frame_without
                 helmet_detection_data['current_total'] = frame_with + frame_without
 
-                # Vẽ overlay thống kê TÍCH LŨY trên video (giống web UI - chỉ tăng, không giảm)
-                try:
-                    # Lấy số tích lũy từ helmet_detection_data
-                    total_with_helmet = helmet_detection_data.get('with_helmet', 0)
-                    total_without_helmet = helmet_detection_data.get('without_helmet', 0)
-                    total_violations = total_without_helmet  # Vi phạm = không mũ
-                    
-                    # Nền đen cho text - mở rộng kích thước
-                    cv2.rectangle(frame, (10, 10), (450, 130), (0, 0, 0), -1)
-                    cv2.rectangle(frame, (10, 10), (450, 130), (255, 255, 255), 2)  # Viền trắng
-                    
-                    # Tiêu đề
-                    cv2.putText(frame, "THONG KE TICH LUY:", (20, 35), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                    
-                    # Tổng số người có mũ đã đếm (TÍCH LŨY - CHỈ TĂNG)
-                    cv2.putText(frame, f"Tong co mu: {total_with_helmet}", (20, 65), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                    
-                    # Tổng số người không mũ đã đếm (TÍCH LŨY - CHỈ TĂNG)
-                    cv2.putText(frame, f"Tong khong mu: {total_without_helmet}", (20, 95), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 165, 0), 2)  # Cam
-                    
-                    # Tổng vi phạm (ĐỎ)
-                    cv2.putText(frame, f"TONG VI PHAM: {total_violations}", (20, 125), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                except Exception as e:
-                    print(f"⚠️ Error drawing overlay: {e}")
+                # BỎ PHẦN THỐNG KÊ TÍCH LŨY TRÊN VIDEO - Chỉ hiển thị ở web UI bên phải
 
                 # Cleanup cooldown mỗi 150 frames (5 giây) - XÓA COOLDOWN CŨ HƠN 250 FRAMES
                 if frame_number % 150 == 0:
@@ -2772,41 +2745,74 @@ def stop_helmet_detection():
 
 @app.route("/helmet_detection_status", methods=['GET'])
 def get_helmet_detection_status():
-    """Get current status of helmet detection with detailed stats"""
+    """
+    Get current status of helmet detection with detailed stats
+    Lấy dữ liệu TRỰC TIẾP TỪ DATABASE kết hợp với realtime session data
+    """
     global helmet_detection_active, helmet_detection_data
     
-    # Tính runtime
+    # Tính runtime từ session
     if helmet_detection_data.get('start_time') and isinstance(helmet_detection_data['start_time'], (int, float)):
         current_time = time.time()
         runtime_seconds = current_time - helmet_detection_data['start_time']
     else:
         runtime_seconds = 0
     
-    # Tính tỷ lệ vi phạm
-    with_helmet = helmet_detection_data.get('with_helmet', 0)
-    without_helmet = helmet_detection_data.get('without_helmet', 0)
-    total_detections = with_helmet + without_helmet
+    # LẤY DỮ LIỆU TỪ DATABASE (tổng tích lũy)
+    db_with_helmet = 0
+    db_without_helmet = 0
+    db_total_detections = 0
     
+    if stats_db:
+        try:
+            today = datetime.date.today()
+            camera_id = 2  # Camera 2 = Helmet
+            
+            # Lấy thống kê từ database
+            helmet_stats = stats_db.get_helmet_stats(camera_id, date=today)
+            if helmet_stats:
+                db_without_helmet = helmet_stats.get('no_helmet_count', 0) or 0
+                db_with_helmet = helmet_stats.get('with_helmet_count', 0) or 0
+                db_total_detections = helmet_stats.get('total_detections', 0) or 0
+            
+            print(f"📊 [HELMET DB] Today: without={db_without_helmet}, with={db_with_helmet}, total={db_total_detections}")
+        except Exception as e:
+            print(f"⚠️ Error fetching helmet stats from DB: {e}")
+    
+    # Nếu đang active, ưu tiên dữ liệu realtime từ session (đang xử lý)
+    # Nếu không active, dùng dữ liệu từ database (đã xử lý xong)
+    if helmet_detection_active:
+        # Realtime: dùng dữ liệu từ session
+        with_helmet = helmet_detection_data.get('with_helmet', 0)
+        without_helmet = helmet_detection_data.get('without_helmet', 0)
+        total_detections = with_helmet + without_helmet
+    else:
+        # Không active: dùng dữ liệu từ database
+        with_helmet = db_with_helmet
+        without_helmet = db_without_helmet
+        total_detections = db_total_detections
+    
+    # Tính tỷ lệ vi phạm
     if total_detections > 0:
         violation_rate = round((without_helmet / total_detections) * 100, 1)
     else:
         violation_rate = 0
     
-    # Current frame counts
-    cur_with = helmet_detection_data.get('current_with', 0)
-    cur_without = helmet_detection_data.get('current_without', 0)
-    cur_total = helmet_detection_data.get('current_total', 0)
+    # Current frame counts (chỉ khi đang active)
+    cur_with = helmet_detection_data.get('current_with', 0) if helmet_detection_active else 0
+    cur_without = helmet_detection_data.get('current_without', 0) if helmet_detection_active else 0
+    cur_total = helmet_detection_data.get('current_total', 0) if helmet_detection_active else 0
     cur_rate = round((cur_without / cur_total) * 100, 1) if cur_total > 0 else 0
 
     return jsonify({
         'active': helmet_detection_active,
-        # Cumulative (session)
+        # Cumulative (từ database hoặc session nếu đang chạy)
         'total_violations': without_helmet,
         'with_helmet_cum': with_helmet,
         'without_helmet_cum': without_helmet,
         'total_detections_cum': total_detections,
         'violation_rate_cum': violation_rate,
-        # Current (per frame)
+        # Current (per frame - chỉ khi active)
         'with_helmet': cur_with,
         'without_helmet': cur_without,
         'total_detections': cur_total,
@@ -2814,7 +2820,8 @@ def get_helmet_detection_status():
         'frame_count': helmet_detection_data.get('frame_count', 0),
         'runtime': runtime_seconds,
         'runtime_formatted': f"{int(runtime_seconds//3600):02d}:{int((runtime_seconds%3600)//60):02d}:{int(runtime_seconds%60):02d}",
-        'last_updated': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        'last_updated': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'source': 'database' if not helmet_detection_active else 'realtime'
     })
 
 
@@ -3665,6 +3672,604 @@ def get_camera_stats_api(camera_id):
     })
 
 
+@app.route('/api/stats/trend/<period>')
+def get_trend_stats_api(period):
+    """
+    Get trend statistics for charts
+    Periods: today, week, month, year, all
+    """
+    try:
+        if not stats_db:
+            return jsonify({
+                'success': False,
+                'error': 'Database not available'
+            }), 503
+        
+        today = datetime.date.today()
+        
+        if period == 'today':
+            # Get hourly breakdown for today
+            query = """
+                SELECT 
+                    HOUR(detected_at) as hour,
+                    COUNT(*) as count
+                FROM (
+                    SELECT detected_at FROM lane_violations WHERE DATE(detected_at) = %s
+                    UNION ALL
+                    SELECT detected_at FROM helmet_violations WHERE DATE(detected_at) = %s
+                    UNION ALL
+                    SELECT detected_at FROM red_light_violations WHERE DATE(detected_at) = %s
+                ) as all_violations
+                GROUP BY HOUR(detected_at)
+                ORDER BY hour
+            """
+            results = stats_db.db.execute_query(query, (today, today, today), fetch=True)
+            
+            # Fill in missing hours
+            hourly_data = [0] * 24
+            if results:
+                for row in results:
+                    hourly_data[row['hour']] = row['count']
+            
+            # Group by 3-hour intervals
+            interval_data = []
+            for i in range(0, 24, 3):
+                interval_data.append(sum(hourly_data[i:i+3]))
+            
+            return jsonify({
+                'success': True,
+                'period': period,
+                'labels': ['0h', '3h', '6h', '9h', '12h', '15h', '18h', '21h'],
+                'data': interval_data
+            })
+            
+        elif period == 'week':
+            # Get last 7 days data
+            query = """
+                SELECT 
+                    DATE(detected_at) as date,
+                    COUNT(*) as count
+                FROM (
+                    SELECT detected_at FROM lane_violations WHERE detected_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                    UNION ALL
+                    SELECT detected_at FROM helmet_violations WHERE detected_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                    UNION ALL
+                    SELECT detected_at FROM red_light_violations WHERE detected_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                ) as all_violations
+                GROUP BY DATE(detected_at)
+                ORDER BY date
+            """
+            results = stats_db.db.execute_query(query, fetch=True)
+            
+            # Create labels and data
+            labels = []
+            data = []
+            for i in range(6, -1, -1):
+                date = today - datetime.timedelta(days=i)
+                labels.append(date.strftime('%d/%m'))
+                
+                # Find data for this date
+                count = 0
+                if results:
+                    for row in results:
+                        if row['date'] == date:
+                            count = row['count']
+                            break
+                data.append(count)
+            
+            return jsonify({
+                'success': True,
+                'period': period,
+                'labels': labels,
+                'data': data
+            })
+            
+        elif period == 'month':
+            # Get last 30 days, grouped by week
+            query = """
+                SELECT 
+                    WEEK(detected_at, 1) as week,
+                    COUNT(*) as count
+                FROM (
+                    SELECT detected_at FROM lane_violations WHERE detected_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                    UNION ALL
+                    SELECT detected_at FROM helmet_violations WHERE detected_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                    UNION ALL
+                    SELECT detected_at FROM red_light_violations WHERE detected_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                ) as all_violations
+                GROUP BY WEEK(detected_at, 1)
+                ORDER BY week
+            """
+            results = stats_db.db.execute_query(query, fetch=True)
+            
+            labels = ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4', 'Tuần 5']
+            data = [row['count'] if results and len(results) > i else 0 for i, row in enumerate(results or [])]
+            
+            # Ensure we have 5 data points
+            while len(data) < 5:
+                data.append(0)
+            
+            return jsonify({
+                'success': True,
+                'period': period,
+                'labels': labels[:len(data)],
+                'data': data[:5]
+            })
+        
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid period: {period}'
+            }), 400
+            
+    except Exception as e:
+        print(f"❌ Trend stats error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/stats/breakdown')
+def get_breakdown_stats_api():
+    """
+    Get detailed breakdown by camera and violation type
+    """
+    try:
+        if not stats_db:
+            return jsonify({
+                'success': False,
+                'error': 'Database not available'
+            }), 503
+        
+        today = datetime.date.today()
+        
+        # Get stats for each camera
+        cameras_data = []
+        
+        # Camera 1 - Lane
+        lane_query = """
+            SELECT 
+                COUNT(*) as total_all_time,
+                SUM(CASE WHEN DATE(detected_at) = %s THEN 1 ELSE 0 END) as total_today
+            FROM lane_violations
+            WHERE camera_id = 1
+        """
+        lane_result = stats_db.db.execute_query(lane_query, (today,), fetch=True)
+        
+        # Camera 2 - Helmet
+        helmet_query = """
+            SELECT 
+                COUNT(*) as total_all_time,
+                SUM(CASE WHEN DATE(detected_at) = %s THEN 1 ELSE 0 END) as total_today
+            FROM helmet_violations
+            WHERE camera_id = 2
+        """
+        helmet_result = stats_db.db.execute_query(helmet_query, (today,), fetch=True)
+        
+        # Camera 3 - Red Light
+        redlight_query = """
+            SELECT 
+                COUNT(*) as total_all_time,
+                SUM(CASE WHEN DATE(detected_at) = %s THEN 1 ELSE 0 END) as total_today
+            FROM red_light_violations
+            WHERE camera_id = 3
+        """
+        redlight_result = stats_db.db.execute_query(redlight_query, (today,), fetch=True)
+        
+        lane_data = lane_result[0] if lane_result else {'total_all_time': 0, 'total_today': 0}
+        helmet_data = helmet_result[0] if helmet_result else {'total_all_time': 0, 'total_today': 0}
+        redlight_data = redlight_result[0] if redlight_result else {'total_all_time': 0, 'total_today': 0}
+        
+        return jsonify({
+            'success': True,
+            'cameras': [
+                {
+                    'camera_id': 1,
+                    'camera_name': 'Camera 1 (Làn Đường)',
+                    'total_all_time': int(lane_data['total_all_time'] or 0),
+                    'total_today': int(lane_data['total_today'] or 0)
+                },
+                {
+                    'camera_id': 2,
+                    'camera_name': 'Camera 2 (Mũ Bảo Hiểm)',
+                    'total_all_time': int(helmet_data['total_all_time'] or 0),
+                    'total_today': int(helmet_data['total_today'] or 0)
+                },
+                {
+                    'camera_id': 3,
+                    'camera_name': 'Camera 3 (Đèn Đỏ)',
+                    'total_all_time': int(redlight_data['total_all_time'] or 0),
+                    'total_today': int(redlight_data['total_today'] or 0)
+                }
+            ],
+            'source': 'database'
+        })
+        
+    except Exception as e:
+        print(f"❌ Breakdown stats error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/stats/week-trend')
+def get_week_trend_api():
+    """
+    Get 7-day trend data broken down by violation type
+    """
+    try:
+        if not stats_db:
+            return jsonify({
+                'success': False,
+                'error': 'Database not available'
+            }), 503
+        
+        today = datetime.date.today()
+        
+        # Prepare date range
+        dates = [(today - datetime.timedelta(days=i)).strftime('%Y-%m-%d') for i in range(6, -1, -1)]
+        labels = [(today - datetime.timedelta(days=i)).strftime('%d/%m') for i in range(6, -1, -1)]
+        
+        # Get lane violations
+        lane_query = """
+            SELECT DATE(detected_at) as date, COUNT(*) as count
+            FROM lane_violations
+            WHERE detected_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+            GROUP BY DATE(detected_at)
+        """
+        lane_results = stats_db.db.execute_query(lane_query, fetch=True) or []
+        lane_dict = {str(row['date']): row['count'] for row in lane_results}
+        lane_data = [lane_dict.get(date, 0) for date in dates]
+        
+        # Get helmet violations
+        helmet_query = """
+            SELECT DATE(detected_at) as date, COUNT(*) as count
+            FROM helmet_violations
+            WHERE detected_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+            GROUP BY DATE(detected_at)
+        """
+        helmet_results = stats_db.db.execute_query(helmet_query, fetch=True) or []
+        helmet_dict = {str(row['date']): row['count'] for row in helmet_results}
+        helmet_data = [helmet_dict.get(date, 0) for date in dates]
+        
+        # Get red light violations
+        redlight_query = """
+            SELECT DATE(detected_at) as date, COUNT(*) as count
+            FROM red_light_violations
+            WHERE detected_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+            GROUP BY DATE(detected_at)
+        """
+        redlight_results = stats_db.db.execute_query(redlight_query, fetch=True) or []
+        redlight_dict = {str(row['date']): row['count'] for row in redlight_results}
+        redlight_data = [redlight_dict.get(date, 0) for date in dates]
+        
+        return jsonify({
+            'success': True,
+            'labels': labels,
+            'datasets': {
+                'lane': lane_data,
+                'helmet': helmet_data,
+                'redlight': redlight_data
+            },
+            'source': 'database'
+        })
+        
+    except Exception as e:
+        print(f"❌ Week trend error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/export/csv')
+def export_csv_report():
+    """
+    Export traffic violations report as CSV
+    """
+    try:
+        from io import StringIO
+        import csv
+        
+        # Get overall stats
+        if stats_db:
+            overall_stats = stats_db.get_overall_stats()
+            today = datetime.date.today()
+            
+            # Create CSV content
+            output = StringIO()
+            writer = csv.writer(output)
+            
+            # Header
+            writer.writerow(['BÁO CÁO VI PHẠM GIAO THÔNG'])
+            writer.writerow([f'Ngày xuất: {datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")}'])
+            writer.writerow([])
+            
+            # Summary
+            writer.writerow(['TỔNG QUAN'])
+            writer.writerow(['Loại Vi Phạm', 'Tổng Cộng', 'Hôm Nay'])
+            
+            total_all = 0
+            total_today = 0
+            
+            for camera in overall_stats:
+                camera_name = f"Camera {camera['camera_id']} - {camera['camera_type']}"
+                all_time = camera.get('total_violations', 0)
+                today_count = camera.get('today_violations', 0)
+                
+                writer.writerow([camera_name, all_time, today_count])
+                total_all += all_time
+                total_today += today_count
+            
+            writer.writerow([])
+            writer.writerow(['Tổng Cộng', total_all, total_today])
+            
+            # Get CSV content
+            csv_content = output.getvalue()
+            output.close()
+            
+            # Create response
+            response = app.response_class(
+                response=csv_content,
+                status=200,
+                mimetype='text/csv',
+                headers={
+                    'Content-Disposition': f'attachment; filename=traffic_violations_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+                }
+            )
+            return response
+        else:
+            return jsonify({'error': 'Database not available'}), 503
+            
+    except Exception as e:
+        print(f"❌ CSV export error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export/excel')
+def export_excel_report():
+    """
+    Export traffic violations report as Excel
+    Requires openpyxl: pip install openpyxl
+    """
+    try:
+        from io import BytesIO
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        except ImportError:
+            return jsonify({
+                'error': 'openpyxl not installed. Run: pip install openpyxl'
+            }), 500
+        
+        if not stats_db:
+            return jsonify({'error': 'Database not available'}), 503
+        
+        # Get data
+        overall_stats = stats_db.get_overall_stats()
+        today = datetime.date.today()
+        
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Báo Cáo Vi Phạm"
+        
+        # Styles
+        header_fill = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF", size=14)
+        title_font = Font(bold=True, size=16)
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Title
+        ws.merge_cells('A1:D1')
+        cell = ws['A1']
+        cell.value = 'BÁO CÁO VI PHẠM GIAO THÔNG'
+        cell.font = title_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        # Date
+        ws.merge_cells('A2:D2')
+        cell = ws['A2']
+        cell.value = f'Ngày xuất: {datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")}'
+        cell.alignment = Alignment(horizontal='center')
+        
+        # Headers
+        ws['A4'] = 'Camera'
+        ws['B4'] = 'Loại Vi Phạm'
+        ws['C4'] = 'Tổng Cộng'
+        ws['D4'] = 'Hôm Nay'
+        
+        for cell in ['A4', 'B4', 'C4', 'D4']:
+            ws[cell].font = header_font
+            ws[cell].fill = header_fill
+            ws[cell].border = border
+            ws[cell].alignment = Alignment(horizontal='center', vertical='center')
+        
+        # Data
+        row = 5
+        total_all = 0
+        total_today = 0
+        
+        for camera in overall_stats:
+            ws[f'A{row}'] = f"Camera {camera['camera_id']}"
+            ws[f'B{row}'] = camera['camera_type'].title()
+            ws[f'C{row}'] = camera.get('total_violations', 0)
+            ws[f'D{row}'] = camera.get('today_violations', 0)
+            
+            total_all += camera.get('total_violations', 0)
+            total_today += camera.get('today_violations', 0)
+            
+            for cell in [f'A{row}', f'B{row}', f'C{row}', f'D{row}']:
+                ws[cell].border = border
+                ws[cell].alignment = Alignment(horizontal='center', vertical='center')
+            
+            row += 1
+        
+        # Total row
+        ws[f'A{row}'] = 'TỔNG CỘNG'
+        ws[f'B{row}'] = ''
+        ws[f'C{row}'] = total_all
+        ws[f'D{row}'] = total_today
+        
+        for cell in [f'A{row}', f'B{row}', f'C{row}', f'D{row}']:
+            ws[cell].font = Font(bold=True)
+            ws[cell].border = border
+            ws[cell].fill = PatternFill(start_color="E0E0E0", end_color="E0E0E0", fill_type="solid")
+            ws[cell].alignment = Alignment(horizontal='center', vertical='center')
+        
+        # Adjust column widths
+        ws.column_dimensions['A'].width = 15
+        ws.column_dimensions['B'].width = 20
+        ws.column_dimensions['C'].width = 15
+        ws.column_dimensions['D'].width = 15
+        
+        # Save to BytesIO
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Create response
+        response = app.response_class(
+            response=output.getvalue(),
+            status=200,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={
+                'Content-Disposition': f'attachment; filename=traffic_violations_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            }
+        )
+        return response
+        
+    except Exception as e:
+        print(f"❌ Excel export error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export/pdf')
+def export_pdf_report():
+    """
+    Export traffic violations report as PDF
+    Requires reportlab: pip install reportlab
+    """
+    try:
+        from io import BytesIO
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib import colors
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import inch
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+        except ImportError:
+            return jsonify({
+                'error': 'reportlab not installed. Run: pip install reportlab'
+            }), 500
+        
+        if not stats_db:
+            return jsonify({'error': 'Database not available'}), 503
+        
+        # Get data
+        overall_stats = stats_db.get_overall_stats()
+        
+        # Create PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        elements = []
+        
+        # Styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#FF6B00'),
+            spaceAfter=30,
+            alignment=1  # Center
+        )
+        
+        # Title
+        title = Paragraph("BÁO CÁO VI PHẠM GIAO THÔNG", title_style)
+        elements.append(title)
+        
+        # Date
+        date_text = f"Ngày xuất: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+        date_para = Paragraph(date_text, styles['Normal'])
+        elements.append(date_para)
+        elements.append(Spacer(1, 0.5*inch))
+        
+        # Table data
+        data = [['Camera', 'Loại Vi Phạm', 'Tổng Cộng', 'Hôm Nay']]
+        
+        total_all = 0
+        total_today = 0
+        
+        for camera in overall_stats:
+            data.append([
+                f"Camera {camera['camera_id']}",
+                camera['camera_type'].title(),
+                str(camera.get('total_violations', 0)),
+                str(camera.get('today_violations', 0))
+            ])
+            total_all += camera.get('total_violations', 0)
+            total_today += camera.get('today_violations', 0)
+        
+        data.append(['TỔNG CỘNG', '', str(total_all), str(total_today)])
+        
+        # Create table
+        table = Table(data, colWidths=[2*inch, 2*inch, 1.5*inch, 1.5*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#FF6B00')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 14),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#E0E0E0')),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        elements.append(table)
+        
+        # Build PDF
+        doc.build(elements)
+        buffer.seek(0)
+        
+        # Create response
+        response = app.response_class(
+            response=buffer.getvalue(),
+            status=200,
+            mimetype='application/pdf',
+            headers={
+                'Content-Disposition': f'attachment; filename=traffic_violations_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+            }
+        )
+        return response
+        
+    except Exception as e:
+        print(f"❌ PDF export error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 # ============================================================================
 # GEMINI AI CHATBOT ENDPOINTS
 # ============================================================================
@@ -3795,6 +4400,133 @@ def get_quick_stats_for_chat():
         return jsonify({
             'success': False,
             'error': str(e)
+        }), 500
+
+
+@app.route("/red_light_detection_status", methods=['GET'])
+def get_red_light_detection_status():
+    """
+    Lấy thống kê thời gian thực vi phạm đèn đỏ TRỰC TIẾP TỪ DATABASE
+    
+    Response:
+        {
+            "success": true,
+            "active": false,
+            "stats": {
+                "total_violations": ...,
+                "total_violations_today": ...,
+                "unique_vehicles": ...,
+                "unique_vehicles_today": ...,
+                "runtime_seconds": ...
+            },
+            "recent_violations": [...]
+        }
+    """
+    try:
+        if not stats_db:
+            return jsonify({
+                'success': False,
+                'error': 'Database not available',
+                'stats': {
+                    'total_violations': 0,
+                    'total_violations_today': 0,
+                    'unique_vehicles': 0,
+                    'unique_vehicles_today': 0,
+                    'runtime_seconds': 0
+                },
+                'recent_violations': []
+            })
+        
+        today = datetime.date.today()
+        camera_id = 3  # Camera 3 = Red Light
+        
+        # Lấy tổng vi phạm ALL TIME từ database
+        redlight_stats_all = stats_db.get_red_light_stats(camera_id)
+        total_violations_all = redlight_stats_all['violation_count'] if redlight_stats_all else 0
+        unique_vehicles_all = redlight_stats_all['unique_vehicles'] if redlight_stats_all else 0
+        
+        # Lấy vi phạm HÔM NAY từ database
+        redlight_stats_today = stats_db.get_red_light_stats(camera_id, date=today)
+        total_violations_today = redlight_stats_today['violation_count'] if redlight_stats_today else 0
+        unique_vehicles_today = redlight_stats_today['unique_vehicles'] if redlight_stats_today else 0
+        
+        # Lấy danh sách vi phạm gần đây (10 vi phạm mới nhất HÔM NAY)
+        recent_violations = []
+        try:
+            query = """
+                SELECT 
+                    violation_id,
+                    frame_number,
+                    time_in_video,
+                    license_plate,
+                    confidence,
+                    detected_at,
+                    DATE_FORMAT(detected_at, '%H:%i:%s') as time_formatted
+                FROM red_light_violations
+                WHERE camera_id = %s AND DATE(detected_at) = %s
+                ORDER BY detected_at DESC
+                LIMIT 10
+            """
+            results = violation_db.db.execute_query(query, (camera_id, today), fetch=True)
+            
+            if results:
+                for row in results:
+                    recent_violations.append({
+                        'violation_id': row['violation_id'],
+                        'frame_number': row['frame_number'],
+                        'time_in_video': float(row['time_in_video']) if row['time_in_video'] else 0,
+                        'license_plate': row['license_plate'] or 'Unknown',
+                        'confidence': float(row['confidence']) if row['confidence'] else 0,
+                        'detected_at': row['detected_at'].isoformat() if row['detected_at'] else '',
+                        'time_formatted': row['time_formatted'] or ''
+                    })
+        except Exception as e:
+            print(f"⚠️ Error fetching recent violations: {e}")
+        
+        # Tính runtime (giả sử session bắt đầu từ vi phạm đầu tiên trong ngày)
+        runtime_seconds = 0
+        video_id = session.get('current_video_id_redlight')
+        if video_id and video_db:
+            try:
+                video_info = video_db.get_video_info(video_id)
+                if video_info:
+                    # Tính thời gian từ khi bắt đầu processing
+                    if video_info.get('processing_started_at'):
+                        start_time = video_info['processing_started_at']
+                        if isinstance(start_time, datetime.datetime):
+                            runtime_seconds = (datetime.datetime.now() - start_time).total_seconds()
+            except Exception as e:
+                print(f"⚠️ Error calculating runtime: {e}")
+        
+        return jsonify({
+            'success': True,
+            'active': False,  # Red light không có realtime detection như lane/helmet
+            'stats': {
+                'total_violations': total_violations_all,
+                'total_violations_today': total_violations_today,
+                'unique_vehicles': unique_vehicles_all,
+                'unique_vehicles_today': unique_vehicles_today,
+                'runtime_seconds': runtime_seconds
+            },
+            'recent_violations': recent_violations,
+            'source': 'database'
+        })
+        
+    except Exception as e:
+        print(f"❌ Red light detection status error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'stats': {
+                'total_violations': 0,
+                'total_violations_today': 0,
+                'unique_vehicles': 0,
+                'unique_vehicles_today': 0,
+                'runtime_seconds': 0
+            },
+            'recent_violations': []
         }), 500
 
 

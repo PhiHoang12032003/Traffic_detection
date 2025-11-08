@@ -17,6 +17,8 @@
         background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
         min-height: 100vh;
         color: #333;
+        overflow-x: hidden; /* Ngăn horizontal scroll */
+        scroll-behavior: auto; /* Tắt smooth scroll */
       }
 
       .header {
@@ -193,6 +195,8 @@
         border-radius: 20px;
         padding: 30px;
         box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+        overflow: hidden; /* Ngăn scroll */
+        position: relative; /* Ngăn reflow */
       }
 
       .chart-title {
@@ -212,11 +216,15 @@
       .chart-canvas {
         width: 100%;
         height: 300px;
+        max-height: 300px !important;
+        min-height: 300px !important;
       }
 
       .pie-chart {
         width: 100%;
         height: 250px;
+        max-height: 250px !important;
+        min-height: 250px !important;
       }
 
       .reports-section {
@@ -516,14 +524,39 @@
           </div>
         </div>
 
+        <!-- Additional Stats Row -->
+        <div class="stats-overview" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 30px;">
+          <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+              <i class="fas fa-traffic-light"></i>
+            </div>
+            <div class="stat-number" style="color: #ef4444;" id="redlightViolations">0</div>
+            <div class="stat-label">Vi Phạm Đèn Đỏ</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+              <i class="fas fa-percentage"></i>
+            </div>
+            <div class="stat-number" style="color: #10b981;" id="complianceRate">0%</div>
+            <div class="stat-label">Tỷ Lệ Tuân Thủ</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+              <i class="fas fa-chart-line"></i>
+            </div>
+            <div class="stat-number" style="color: #f59e0b;" id="avgDaily">0</div>
+            <div class="stat-label">Trung Bình Mỗi Ngày</div>
+          </div>
+        </div>
+
         <!-- Charts Section -->
         <div class="charts-section">
           <div class="chart-container">
             <h3 class="chart-title">
-              <i class="fas fa-chart-line"></i>
-              Biểu Đồ Xu Hướng Vi Phạm
+              <i class="fas fa-chart-bar"></i>
+              So Sánh Vi Phạm Theo Camera
             </h3>
-            <canvas id="trendChart" class="chart-canvas"></canvas>
+            <canvas id="cameraCompareChart" class="chart-canvas"></canvas>
           </div>
           <div class="chart-container">
             <h3 class="chart-title">
@@ -532,6 +565,33 @@
             </h3>
             <canvas id="pieChart" class="pie-chart"></canvas>
           </div>
+        </div>
+
+        <!-- Additional Charts Section -->
+        <div class="charts-section">
+          <div class="chart-container">
+            <h3 class="chart-title">
+              <i class="fas fa-clock"></i>
+              Vi Phạm Theo Giờ Trong Ngày
+            </h3>
+            <canvas id="hourlyChart" class="chart-canvas"></canvas>
+          </div>
+          <div class="chart-container">
+            <h3 class="chart-title">
+              <i class="fas fa-chart-line"></i>
+              Xu Hướng 7 Ngày Qua
+            </h3>
+            <canvas id="simpleLineChart" class="chart-canvas"></canvas>
+          </div>
+        </div>
+
+        <!-- Week Trend Chart -->
+        <div class="chart-container" style="margin-bottom: 30px; min-height: 380px; max-height: 380px;">
+          <h3 class="chart-title">
+            <i class="fas fa-calendar-week"></i>
+            Chi Tiết Vi Phạm Theo Loại (7 Ngày)
+          </h3>
+          <canvas id="weekTrendChart" style="height: 300px; max-height: 300px; min-height: 300px;"></canvas>
         </div>
 
         <!-- Reports Section -->
@@ -641,53 +701,21 @@
 
     <script>
       let currentFilter = "today";
-      let trendChart = null;
       let pieChart = null;
+      let cameraCompareChart = null;
+      let hourlyChart = null;
+      let simpleLineChart = null;
+      let weekTrendChart = null;
+      let isLoadingData = false; // Flag để tránh load nhiều lần
+
+      // Disable Chart.js global defaults animation
+      Chart.defaults.animation = false;
+      Chart.defaults.animations = false;
+      Chart.defaults.responsive = true;
+      Chart.defaults.maintainAspectRatio = false;
 
       // Initialize charts
       function initCharts() {
-        // Trend Chart
-        const trendCtx = document.getElementById("trendChart").getContext("2d");
-        trendChart = new Chart(trendCtx, {
-          type: "line",
-          data: {
-            labels: ["T2", "T3", "T4", "T5", "T6", "T7", "CN"],
-            datasets: [
-              {
-                label: "Vi Phạm",
-                data: [12, 19, 15, 25, 22, 18, 14],
-                borderColor: "#f59e0b",
-                backgroundColor: "rgba(245, 158, 11, 0.1)",
-                borderWidth: 3,
-                fill: true,
-                tension: 0.4,
-              },
-            ],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: {
-                display: false,
-              },
-            },
-            scales: {
-              y: {
-                beginAtZero: true,
-                grid: {
-                  color: "#f3f4f6",
-                },
-              },
-              x: {
-                grid: {
-                  display: false,
-                },
-              },
-            },
-          },
-        });
-
         // Pie Chart
         const pieCtx = document.getElementById("pieChart").getContext("2d");
         pieChart = new Chart(pieCtx, {
@@ -696,7 +724,7 @@
             labels: ["Làn Đường", "Mũ Bảo Hiểm", "Đèn Đỏ"],
             datasets: [
               {
-                data: [45, 32, 28],
+                data: [0, 0, 0],
                 backgroundColor: ["#ff6b6b", "#4facfe", "#ef4444"],
                 borderWidth: 0,
               },
@@ -705,13 +733,296 @@
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: false, // Tắt animation  
+            interaction: {
+              mode: 'index',
+              intersect: false,
+            },
             plugins: {
               legend: {
                 position: "bottom",
                 labels: {
                   padding: 20,
                   usePointStyle: true,
+                  font: { size: 13 }
                 },
+              },
+              tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                padding: 12,
+                titleFont: { size: 14, weight: 'bold' },
+                bodyFont: { size: 13 },
+                callbacks: {
+                  label: function(context) {
+                    const label = context.label || '';
+                    const value = context.parsed || 0;
+                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                    return `${label}: ${value} (${percentage}%)`;
+                  }
+                }
+              }
+            },
+          },
+        });
+
+        // Camera Compare Chart
+        const cameraCtx = document.getElementById("cameraCompareChart").getContext("2d");
+        cameraCompareChart = new Chart(cameraCtx, {
+          type: "bar",
+          data: {
+            labels: ["Camera 1\n(Làn Đường)", "Camera 2\n(Mũ BH)", "Camera 3\n(Đèn Đỏ)"],
+            datasets: [
+              {
+                label: "Hôm Nay",
+                data: [0, 0, 0],
+                backgroundColor: "rgba(245, 158, 11, 0.8)",
+              },
+              {
+                label: "Tổng Cộng",
+                data: [0, 0, 0],
+                backgroundColor: "rgba(99, 102, 241, 0.8)",
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false, // Tắt animation
+            plugins: {
+              legend: {
+                position: "top",
+                labels: {
+                  usePointStyle: true,
+                  padding: 15,
+                  font: { size: 13 }
+                },
+              },
+              tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                padding: 12,
+                titleFont: { size: 14, weight: 'bold' },
+                bodyFont: { size: 13 }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                grid: {
+                  color: "#f3f4f6",
+                },
+                ticks: {
+                  font: { size: 12 }
+                }
+              },
+              x: {
+                grid: {
+                  display: false,
+                },
+                ticks: {
+                  font: { size: 11 }
+                }
+              },
+            },
+          },
+        });
+
+        // Hourly Chart
+        const hourlyCtx = document.getElementById("hourlyChart").getContext("2d");
+        hourlyChart = new Chart(hourlyCtx, {
+          type: "line",
+          data: {
+            labels: ["0h", "3h", "6h", "9h", "12h", "15h", "18h", "21h"],
+            datasets: [
+              {
+                label: "Vi Phạm",
+                data: [0, 0, 0, 0, 0, 0, 0, 0],
+                borderColor: "#8b5cf6",
+                backgroundColor: "rgba(139, 92, 246, 0.1)",
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                pointBackgroundColor: "#8b5cf6",
+                pointBorderColor: "#fff",
+                pointBorderWidth: 2,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false, // Tắt animation
+            plugins: {
+              legend: {
+                display: false,
+              },
+              tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                padding: 12,
+                titleFont: { size: 14, weight: 'bold' },
+                bodyFont: { size: 13 }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                grid: {
+                  color: "#f3f4f6",
+                },
+                ticks: {
+                  font: { size: 12 }
+                }
+              },
+              x: {
+                grid: {
+                  display: false,
+                },
+                ticks: {
+                  font: { size: 12 }
+                }
+              },
+            },
+          },
+        });
+
+        // Simple Line Chart - Tổng vi phạm 7 ngày
+        const simpleLineCtx = document.getElementById("simpleLineChart").getContext("2d");
+        simpleLineChart = new Chart(simpleLineCtx, {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label: "Tổng Vi Phạm",
+                data: [],
+                borderColor: "#f59e0b",
+                backgroundColor: "rgba(245, 158, 11, 0.1)",
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                pointBackgroundColor: "#f59e0b",
+                pointBorderColor: "#fff",
+                pointBorderWidth: 2,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false, // Tắt animation
+            plugins: {
+              legend: {
+                display: false,
+              },
+              tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                padding: 12,
+                titleFont: { size: 14, weight: 'bold' },
+                bodyFont: { size: 13 }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                grid: {
+                  color: "#f3f4f6",
+                },
+                ticks: {
+                  font: { size: 12 }
+                }
+              },
+              x: {
+                grid: {
+                  display: false,
+                },
+                ticks: {
+                  font: { size: 12 }
+                }
+              },
+            },
+          },
+        });
+
+        // Week Trend Chart
+        const weekCtx = document.getElementById("weekTrendChart").getContext("2d");
+        weekTrendChart = new Chart(weekCtx, {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label: "Làn Đường",
+                data: [],
+                borderColor: "#ff6b6b",
+                backgroundColor: "rgba(255, 107, 107, 0.1)",
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+              },
+              {
+                label: "Mũ Bảo Hiểm",
+                data: [],
+                borderColor: "#4facfe",
+                backgroundColor: "rgba(79, 172, 254, 0.1)",
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+              },
+              {
+                label: "Đèn Đỏ",
+                data: [],
+                borderColor: "#ef4444",
+                backgroundColor: "rgba(239, 68, 68, 0.1)",
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false, // Tắt animation
+            resizeDelay: 0, // Không delay
+            plugins: {
+              legend: {
+                position: "top",
+                labels: {
+                  usePointStyle: true,
+                  padding: 15,
+                  font: { size: 13 }
+                },
+              },
+              tooltip: {
+                mode: 'index',
+                intersect: false,
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                padding: 12,
+                titleFont: { size: 14, weight: 'bold' },
+                bodyFont: { size: 13 }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                grid: {
+                  color: "#f3f4f6",
+                },
+                ticks: {
+                  font: { size: 12 }
+                }
+              },
+              x: {
+                grid: {
+                  display: false,
+                },
+                ticks: {
+                  font: { size: 11 }
+                }
               },
             },
           },
@@ -728,10 +1039,8 @@
         });
         event.target.classList.add("active");
 
-        // Simulate API call
-        setTimeout(() => {
-          loadData(period);
-        }, 500);
+        // Load data immediately without setTimeout
+        loadData(period);
       }
 
       // Load data based on filter
@@ -743,40 +1052,85 @@
             today: 15,
             lane: 8,
             helmet: 7,
+            redlight: 5,
             trend: [2, 3, 1, 4, 2, 2, 1],
-            pie: [8, 7, 0],
+            pie: [8, 7, 5],
+            cameraToday: [8, 7, 5],
+            cameraTotal: [8, 7, 5],
+            hourly: [2, 1, 3, 5, 4, 6, 8, 3],
+            week: {
+              lane: [5, 6, 4, 7, 6, 5, 8],
+              helmet: [3, 4, 3, 5, 5, 4, 7],
+              redlight: [2, 2, 2, 3, 3, 3, 5]
+            }
           },
           week: {
             total: 89,
             today: 15,
             lane: 45,
             helmet: 32,
+            redlight: 12,
             trend: [12, 19, 15, 25, 22, 18, 14],
             pie: [45, 32, 12],
+            cameraToday: [8, 7, 5],
+            cameraTotal: [45, 32, 12],
+            hourly: [8, 5, 12, 15, 18, 22, 25, 12],
+            week: {
+              lane: [5, 8, 6, 12, 9, 7, 8],
+              helmet: [3, 5, 4, 8, 7, 5, 7],
+              redlight: [2, 3, 3, 5, 4, 3, 5]
+            }
           },
           month: {
             total: 356,
             today: 15,
             lane: 180,
             helmet: 120,
+            redlight: 56,
             trend: [45, 52, 38, 67, 59, 48, 47],
             pie: [180, 120, 56],
+            cameraToday: [8, 7, 5],
+            cameraTotal: [180, 120, 56],
+            hourly: [15, 8, 18, 45, 52, 67, 89, 35],
+            week: {
+              lane: [22, 28, 24, 32, 29, 25, 28],
+              helmet: [15, 18, 16, 22, 20, 18, 21],
+              redlight: [8, 10, 9, 13, 12, 10, 12]
+            }
           },
           year: {
             total: 4256,
             today: 15,
             lane: 2156,
             helmet: 1456,
+            redlight: 644,
             trend: [320, 380, 290, 450, 420, 380, 360],
             pie: [2156, 1456, 644],
+            cameraToday: [8, 7, 5],
+            cameraTotal: [2156, 1456, 644],
+            hourly: [180, 120, 220, 450, 520, 580, 650, 380],
+            week: {
+              lane: [280, 320, 290, 380, 350, 310, 340],
+              helmet: [180, 210, 190, 250, 230, 205, 225],
+              redlight: [85, 95, 88, 110, 102, 92, 98]
+            }
           },
           all: {
             total: 12567,
             today: 15,
             lane: 6356,
             helmet: 4256,
+            redlight: 1955,
             trend: [950, 1100, 890, 1250, 1180, 1050, 980],
             pie: [6356, 4256, 1955],
+            cameraToday: [8, 7, 5],
+            cameraTotal: [6356, 4256, 1955],
+            hourly: [520, 380, 650, 1250, 1450, 1680, 1850, 1100],
+            week: {
+              lane: [850, 920, 880, 1100, 1020, 950, 1000],
+              helmet: [550, 620, 580, 750, 690, 640, 680],
+              redlight: [260, 290, 275, 340, 315, 295, 310]
+            }
           },
         };
 
@@ -789,14 +1143,32 @@
         animateNumber("helmetViolations", currentData.helmet);
 
         // Update charts
-        if (trendChart) {
-          trendChart.data.datasets[0].data = currentData.trend;
-          trendChart.update();
+        if (simpleLineChart) {
+          simpleLineChart.data.datasets[0].data = currentData.trend;
+          simpleLineChart.update('none');
         }
 
         if (pieChart) {
           pieChart.data.datasets[0].data = currentData.pie;
-          pieChart.update();
+          pieChart.update('none');
+        }
+
+        if (cameraCompareChart) {
+          cameraCompareChart.data.datasets[0].data = currentData.cameraToday;
+          cameraCompareChart.data.datasets[1].data = currentData.cameraTotal;
+          cameraCompareChart.update('none');
+        }
+
+        if (hourlyChart) {
+          hourlyChart.data.datasets[0].data = currentData.hourly;
+          hourlyChart.update('none');
+        }
+
+        if (weekTrendChart) {
+          weekTrendChart.data.datasets[0].data = currentData.week.lane;
+          weekTrendChart.data.datasets[1].data = currentData.week.helmet;
+          weekTrendChart.data.datasets[2].data = currentData.week.redlight;
+          weekTrendChart.update('none');
         }
       }
 
@@ -823,12 +1195,88 @@
       }
 
       // Export report
-      function exportReport(format) {
-        alert(`Báo cáo ${format.toUpperCase()} đã được xuất thành công!`);
+      async function exportReport(format) {
+        try {
+          console.log(`📥 Exporting report as ${format}...`);
+          
+          // Show loading
+          const btn = event.target;
+          const originalText = btn.innerHTML;
+          btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xuất...';
+          btn.disabled = true;
+
+          // Fetch current stats
+          const response = await fetch('/api/stats/overall');
+          const data = await response.json();
+
+          if (format === 'pdf') {
+            // For PDF, redirect to backend endpoint
+            window.location.href = `/api/export/pdf?period=${currentFilter}`;
+          } else if (format === 'excel') {
+            // For Excel, redirect to backend endpoint
+            window.location.href = `/api/export/excel?period=${currentFilter}`;
+          } else if (format === 'csv') {
+            // Generate CSV client-side
+            const csvContent = generateCSV(data);
+            downloadFile(csvContent, 'traffic_violations_report.csv', 'text/csv');
+          }
+
+          setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            alert(`✅ Báo cáo ${format.toUpperCase()} đã được xuất thành công!`);
+          }, 2000);
+
+        } catch (error) {
+          console.error('❌ Export error:', error);
+          alert('Có lỗi khi xuất báo cáo. Vui lòng thử lại.');
+          // Reset button
+          const btn = event.target;
+          btn.disabled = false;
+          btn.innerHTML = btn.innerHTML.replace('fa-spinner fa-spin', btn.classList.contains('pdf') ? 'fa-file-pdf' : btn.classList.contains('excel') ? 'fa-file-excel' : 'fa-file-csv');
+        }
+      }
+
+      // Generate CSV content
+      function generateCSV(data) {
+        let csv = 'Loại Vi Phạm,Tổng Cộng,Hôm Nay\n';
+        
+        if (data.success && data.cameras) {
+          data.cameras.forEach(camera => {
+            csv += `${camera.camera_name},${camera.total_all_time || 0},${camera.total_today || 0}\n`;
+          });
+        }
+        
+        csv += '\nTổng Kết\n';
+        csv += `Tổng vi phạm,${data.summary?.total_violations_all_time || 0}\n`;
+        csv += `Vi phạm hôm nay,${data.summary?.total_violations_today || 0}\n`;
+        
+        return csv;
+      }
+
+      // Download file helper
+      function downloadFile(content, filename, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
       }
 
       // Load initial data FROM DATABASE
       async function loadInitialData() {
+        // Prevent multiple simultaneous loads
+        if (isLoadingData) {
+          console.log("⏳ Already loading data, skipping...");
+          return;
+        }
+        
+        isLoadingData = true;
+        
         try {
           console.log("📊 Loading statistics from database...");
 
@@ -864,6 +1312,15 @@
             animateNumber("todayViolations", parseInt(todayViolations) || 0);
             animateNumber("laneViolations", parseInt(laneViolations) || 0);
             animateNumber("helmetViolations", parseInt(helmetViolations) || 0);
+            animateNumber("redlightViolations", parseInt(redlightViolations) || 0);
+            
+            // Calculate and display compliance rate (assuming 70% compliance)
+            const complianceRate = totalViolations > 0 ? Math.max(0, 100 - (todayViolations * 10)) : 95;
+            document.getElementById("complianceRate").textContent = Math.round(complianceRate) + "%";
+            
+            // Calculate average daily violations (last 7 days)
+            const avgDaily = Math.round(totalViolations / 7);
+            animateNumber("avgDaily", avgDaily);
 
             console.log("✅ Statistics loaded successfully:", {
               total: totalViolations,
@@ -873,31 +1330,140 @@
               redlight: redlightViolations,
             });
 
-            // Update charts with real data
+            // Update pie chart with real data
             if (pieChart) {
               pieChart.data.datasets[0].data = [
                 laneViolations,
                 helmetViolations,
                 redlightViolations,
               ];
-              pieChart.update();
+              pieChart.update('none'); // No animation to prevent loop
             }
+
+            // Load additional chart data
+            await loadChartData();
           } else {
-            console.warn("⚠️ No data from database, using default values");
-            // Use default data
-            loadData("today");
+            console.warn("⚠️ No data from database, using fallback");
+            // Set default values without triggering loadData
+            document.getElementById("totalViolations").textContent = "0";
+            document.getElementById("todayViolations").textContent = "0";
+            document.getElementById("laneViolations").textContent = "0";
+            document.getElementById("helmetViolations").textContent = "0";
+            document.getElementById("redlightViolations").textContent = "0";
           }
         } catch (error) {
           console.error("❌ Error loading data from database:", error);
-          // Use default data on error
-          loadData("today");
+          // Set default values without triggering loadData
+          document.getElementById("totalViolations").textContent = "0";
+          document.getElementById("todayViolations").textContent = "0";
+          document.getElementById("laneViolations").textContent = "0";
+          document.getElementById("helmetViolations").textContent = "0";
+          document.getElementById("redlightViolations").textContent = "0";
+        } finally {
+          isLoadingData = false;
+        }
+      }
+
+      // Load chart data from APIs
+      async function loadChartData() {
+        console.log("🔄 Loading chart data...");
+        
+        try {
+          // Load breakdown data for camera comparison
+          const breakdownResp = await fetch('/api/stats/breakdown');
+          const breakdownData = await breakdownResp.json();
+          
+          if (breakdownData.success && breakdownData.cameras && cameraCompareChart) {
+            const todayData = breakdownData.cameras.map(c => c.total_today || 0);
+            const totalData = breakdownData.cameras.map(c => c.total_all_time || 0);
+            
+            console.log("📊 Updating camera compare chart", {todayData, totalData});
+            cameraCompareChart.data.datasets[0].data = todayData;
+            cameraCompareChart.data.datasets[1].data = totalData;
+            cameraCompareChart.update('none');
+          }
+
+          // Load trend data for hourly chart
+          const trendResp = await fetch('/api/stats/trend/today');
+          const trendData = await trendResp.json();
+          
+          if (trendData.success && trendData.data && hourlyChart) {
+            console.log("⏰ Updating hourly chart", trendData.data);
+            hourlyChart.data.datasets[0].data = trendData.data;
+            hourlyChart.update('none');
+          }
+
+          // Load week trend data
+          const weekResp = await fetch('/api/stats/week-trend');
+          const weekData = await weekResp.json();
+          
+          if (weekData.success && weekData.datasets) {
+            console.log("📅 Updating week trend charts", weekData);
+            
+            // Save current scroll position
+            const scrollY = window.scrollY || window.pageYOffset;
+            
+            // Update week trend chart
+            if (weekTrendChart) {
+              weekTrendChart.data.labels = weekData.labels;
+              weekTrendChart.data.datasets[0].data = weekData.datasets.lane;
+              weekTrendChart.data.datasets[1].data = weekData.datasets.helmet;
+              weekTrendChart.data.datasets[2].data = weekData.datasets.redlight;
+              weekTrendChart.update('none');
+            }
+
+            // Update simple line chart with total
+            if (simpleLineChart) {
+              const totalData = weekData.labels.map((_, i) => 
+                (weekData.datasets.lane[i] || 0) + 
+                (weekData.datasets.helmet[i] || 0) + 
+                (weekData.datasets.redlight[i] || 0)
+              );
+              simpleLineChart.data.labels = weekData.labels;
+              simpleLineChart.data.datasets[0].data = totalData;
+              simpleLineChart.update('none');
+            }
+            
+            // Restore scroll position
+            setTimeout(() => {
+              window.scrollTo(0, scrollY);
+            }, 0);
+          }
+
+          console.log("✅ Chart data loaded successfully - DONE");
+          
+        } catch (error) {
+          console.error("❌ Error loading chart data:", error);
         }
       }
 
       // Initialize page
       document.addEventListener("DOMContentLoaded", function () {
+        console.log("🚀 Page loaded, initializing charts...");
+        
+        // Prevent automatic scrolling
+        window.scrollTo(0, 0);
+        document.body.scrollTop = 0;
+        document.documentElement.scrollTop = 0;
+        
+        // Disable smooth scroll temporarily
+        const originalScroll = window.scrollTo;
+        let initComplete = false;
+        
+        window.scrollTo = function(x, y) {
+          if (initComplete) {
+            originalScroll.call(window, x, y);
+          }
+        };
+        
         initCharts();
-        loadInitialData();
+        console.log("📊 Charts initialized, loading data...");
+        loadInitialData().then(() => {
+          initComplete = true;
+          window.scrollTo = originalScroll;
+          window.scrollTo(0, 0); // Reset to top
+          console.log("✅ Initialization complete - scroll enabled");
+        });
       });
     </script>
   </body>

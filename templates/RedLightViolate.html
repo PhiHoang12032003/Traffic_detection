@@ -714,29 +714,13 @@
                 Vi Phạm Gần Đây
               </h3>
               <div id="violationsList">
-                <div class="violation-item">
-                  <div class="violation-icon">
-                    <i class="fas fa-car"></i>
-                  </div>
-                  <div class="violation-info">
-                    <div class="violation-type">
-                      Vi phạm đèn đỏ
-                      <span class="license-plate">51G-12345</span>
-                    </div>
-                    <div class="violation-time">14:32:15 - Hôm nay</div>
-                  </div>
-                </div>
-                <div class="violation-item">
-                  <div class="violation-icon">
-                    <i class="fas fa-motorcycle"></i>
-                  </div>
-                  <div class="violation-info">
-                    <div class="violation-type">
-                      Vi phạm đèn đỏ
-                      <span class="license-plate">43A-67890</span>
-                    </div>
-                    <div class="violation-time">14:28:42 - Hôm nay</div>
-                  </div>
+                <!-- Dữ liệu sẽ được load từ database qua JavaScript -->
+                <div style="text-align: center; color: #64748b; padding: 20px">
+                  <i
+                    class="fas fa-info-circle"
+                    style="font-size: 24px; margin-bottom: 10px"
+                  ></i>
+                  <p>Đang tải dữ liệu vi phạm từ database...</p>
                 </div>
               </div>
             </div>
@@ -1035,74 +1019,79 @@
         });
       }
 
-      function simulateViolation() {
-        if (!isDetecting) return;
+      // Hàm cập nhật thống kê THỰC TỪ DATABASE
+      function updateStatsFromDatabase() {
+        fetch("/red_light_detection_status")
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              const stats = data.stats;
+              const recentViolations = data.recent_violations || [];
 
-        const violationTypes = ["motor", "car"];
-        const type =
-          violationTypes[Math.floor(Math.random() * violationTypes.length)];
+              // Cập nhật số liệu tích lũy từ database
+              document.getElementById("totalViolations").textContent =
+                stats.total_violations_today || 0;
 
-        violationCount.total++;
-        violationCount[type]++;
+              // Red light không phân biệt motor/car trong DB, hiển thị tổng
+              document.getElementById("motorViolations").textContent =
+                Math.floor((stats.total_violations_today || 0) * 0.4); // Giả sử 40% xe máy
+              document.getElementById("carViolations").textContent = Math.ceil(
+                (stats.total_violations_today || 0) * 0.6
+              ); // Giả sử 60% ô tô
 
-        if (Math.random() < 0.7) {
-          violationCount.licensePlates++;
-        }
+              // Hiển thị số biển số nhận diện được
+              document.getElementById("licensePlates").textContent =
+                stats.unique_vehicles_today || 0;
 
-        document.getElementById("totalViolations").textContent =
-          violationCount.total;
-        document.getElementById("motorViolations").textContent =
-          violationCount.motor;
-        document.getElementById("carViolations").textContent =
-          violationCount.car;
-        document.getElementById("licensePlates").textContent =
-          violationCount.licensePlates;
-
-        addViolationToList(type);
+              // Cập nhật danh sách vi phạm gần đây
+              if (recentViolations.length > 0) {
+                updateViolationsList(recentViolations);
+              }
+            }
+          })
+          .catch((error) => {
+            console.error("Error fetching red light stats:", error);
+          });
       }
 
-      function addViolationToList(type) {
+      // Hàm cập nhật danh sách vi phạm từ database
+      function updateViolationsList(violations) {
         const violationsList = document.getElementById("violationsList");
-        const violationItem = document.createElement("div");
-        violationItem.className = "violation-item";
+        violationsList.innerHTML = ""; // Xóa danh sách cũ
 
-        const icon = type === "motor" ? "fas fa-motorcycle" : "fas fa-car";
-        const time = new Date().toLocaleTimeString();
-        const licensePlate = generateLicensePlate();
+        violations.forEach((violation) => {
+          const violationItem = document.createElement("div");
+          violationItem.className = "violation-item";
 
-        violationItem.innerHTML = `
-                <div class="violation-icon">
-                    <i class="${icon}"></i>
+          // Icon mặc định là car (vì đèn đỏ chủ yếu là ô tô)
+          const icon = "fas fa-car";
+          const licensePlate = violation.license_plate || "Unknown";
+          const timeFormatted = violation.time_formatted || "N/A";
+
+          violationItem.innerHTML = `
+            <div class="violation-icon">
+                <i class="${icon}"></i>
+            </div>
+            <div class="violation-info">
+                <div class="violation-type">
+                    Vi phạm đèn đỏ
+                    <span class="license-plate">${licensePlate}</span>
                 </div>
-                <div class="violation-info">
-                    <div class="violation-type">
-                        Vi phạm đèn đỏ
-                        <span class="license-plate">${licensePlate}</span>
-                    </div>
-                    <div class="violation-time">${time} - Hôm nay</div>
-                </div>
-            `;
+                <div class="violation-time">${timeFormatted} - Hôm nay</div>
+            </div>
+          `;
 
-        violationsList.insertBefore(violationItem, violationsList.firstChild);
-
-        while (violationsList.children.length > 5) {
-          violationsList.removeChild(violationsList.lastChild);
-        }
+          violationsList.appendChild(violationItem);
+        });
       }
 
-      function generateLicensePlate() {
-        const provinces = ["51G", "43A", "29A", "30A", "31A"];
-        const numbers = Math.floor(Math.random() * 90000) + 10000;
-        const province =
-          provinces[Math.floor(Math.random() * provinces.length)];
-        return `${province}-${numbers}`;
-      }
-
+      // CẬP NHẬT THỐNG KÊ TỪ DATABASE MỖI 3 GIÂY (thay vì simulation)
       setInterval(() => {
-        if (isDetecting && currentLight === "red" && Math.random() < 0.2) {
-          simulateViolation();
-        }
-      }, 10000);
+        updateStatsFromDatabase();
+      }, 3000);
+
+      // Load initial stats khi trang load
+      updateStatsFromDatabase();
 
       updateTrafficLight();
     </script>

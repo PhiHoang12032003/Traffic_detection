@@ -520,6 +520,11 @@
         border-radius: 10px;
         margin-bottom: 20px;
         display: none;
+        white-space: pre-line;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.6;
+        max-width: 600px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
 
       .alert-success {
@@ -741,20 +746,16 @@
                 </div>
               </div>
               <div class="stat-item">
-                <span class="stat-label">Tổng Vi Phạm (KHÔNG MŨ)</span>
+                <span class="stat-label">Tổng Vi Phạm</span>
                 <span class="stat-value danger" id="totalViolations">0</span>
               </div>
               <div class="stat-item">
-                <span class="stat-label">Có Mũ BH</span>
-                <span class="stat-value success" id="withHelmet">0</span>
+                <span class="stat-label">Biển Số Nhận Diện</span>
+                <span class="stat-value warning" id="licensePlateCount">0</span>
               </div>
               <div class="stat-item">
-                <span class="stat-label">Không Mũ BH</span>
-                <span class="stat-value danger" id="withoutHelmet">0</span>
-              </div>
-              <div class="stat-item">
-                <span class="stat-label">Tỷ Lệ Vi Phạm</span>
-                <span class="stat-value warning" id="violationRate">0%</span>
+                <span class="stat-label">Thời Gian Chạy</span>
+                <span class="stat-value" id="runtime">00:00:00</span>
               </div>
             </div>
 
@@ -939,6 +940,9 @@
       }
 
       function stopDetection() {
+        // Hiển thị thông báo đang xử lý
+        showAlert("info", "⏳ Đang dừng và xuất video phân tích...");
+
         // Call stop API
         fetch("/stop_helmet_detection", {
           method: "POST",
@@ -962,20 +966,56 @@
                 processingInterval = null;
               }
 
-              // Show summary
+              // Show detailed success message
               const summary = data.summary || {};
-              showAlert(
-                "success",
-                `✅ Đã dừng và xuất kết quả! Tổng vi phạm: ${
-                  summary.total_violations || 0
-                }`
-              );
+              const files = data.files || {};
+
+              let successMsg = `✅ Xuất kết quả thành công!\n\n`;
+              successMsg += `📊 Tổng vi phạm: ${
+                summary.total_violations || 0
+              }\n`;
+              successMsg += `⏱️ Thời gian xử lý: ${Math.round(
+                summary.processing_time || 0
+              )}s\n`;
+              successMsg += `🎬 Frames đã xử lý: ${
+                summary.frames_processed || 0
+              }\n\n`;
+              successMsg += `📁 Các file đã xuất:\n`;
+
+              if (files.video) {
+                successMsg += `  • Video phân tích: ${files.video}\n`;
+              }
+              if (files.csv) {
+                successMsg += `  • File CSV: ${files.csv}\n`;
+              }
+              if (files.excel) {
+                successMsg += `  • File Excel: ${files.excel}\n`;
+              }
+              if (files.json) {
+                successMsg += `  • File JSON: ${files.json}\n`;
+              }
+
+              successMsg += `\n💡 Sử dụng nút "Tải Kết Quả" bên dưới để tải về!`;
+
+              showAlert("success", successMsg);
 
               // Update final stats
               if (summary.total_violations) {
                 document.getElementById("totalViolations").textContent =
                   summary.total_violations;
               }
+
+              // Tự động scroll xuống để người dùng thấy nút download
+              setTimeout(() => {
+                const downloadSection =
+                  document.querySelector(".download-section");
+                if (downloadSection) {
+                  downloadSection.scrollIntoView({
+                    behavior: "smooth",
+                    block: "nearest",
+                  });
+                }
+              }, 500);
             } else {
               showAlert("error", data.error || "Không thể dừng phát hiện!");
             }
@@ -992,41 +1032,55 @@
           fetch("/helmet_detection_status")
             .then((response) => response.json())
             .then((data) => {
+              // Cập nhật stats bất kể active hay không (để hiển thị dữ liệu từ database)
+
+              // Cumulative totals (từ database hoặc realtime)
+              const totalViolations =
+                (typeof data.total_violations !== "undefined"
+                  ? data.total_violations
+                  : data.without_helmet_cum) || 0;
+
+              // Biển Số Nhận Diện (tổng violations có biển số)
+              const licensePlateCount =
+                data.license_plate_count || totalViolations;
+
+              // Cập nhật UI
+              document.getElementById("totalViolations").textContent =
+                totalViolations;
+              document.getElementById("licensePlateCount").textContent =
+                licensePlateCount;
+              document.getElementById("runtime").textContent =
+                data.runtime_formatted || "00:00:00";
+              document.getElementById("progressText").textContent =
+                data.runtime_formatted || "00:00:00";
+
+              // Hiển thị nguồn dữ liệu (database hoặc realtime)
+              const statusElement = document.getElementById("status");
               if (data.active) {
-                // Update stats real-time
-                // Cumulative session totals
-                const totalViolations =
-                  (typeof data.total_violations !== "undefined"
-                    ? data.total_violations
-                    : data.without_helmet_cum) || 0;
-                document.getElementById("totalViolations").textContent =
-                  totalViolations;
-
-                // Current per-frame counts (match visible boxes)
-                document.getElementById("withHelmet").textContent =
-                  data.with_helmet || 0;
-                document.getElementById("withoutHelmet").textContent =
-                  data.without_helmet || 0;
-
-                // Current per-frame violation rate
-                const vr =
-                  typeof data.violation_rate === "number"
-                    ? data.violation_rate
-                    : 0;
-                document.getElementById("violationRate").textContent = `${vr}%`;
-                document.getElementById("progressText").textContent =
-                  data.runtime_formatted || "00:00:00";
-
-                console.log("📊 Stats updated:", {
-                  total_violations: totalViolations,
-                  with_helmet_current: data.with_helmet,
-                  without_helmet_current: data.without_helmet,
-                  violation_rate_current: vr,
-                });
+                statusElement.textContent = "Đang phát hiện";
               } else {
-                // Detection stopped
-                clearInterval(processingInterval);
-                processingInterval = null;
+                // Khi không active, hiển thị dữ liệu từ database
+                if (data.source === "database") {
+                  statusElement.textContent = "Đã có dữ liệu từ DB";
+                } else {
+                  statusElement.textContent = "Chờ";
+                }
+              }
+
+              console.log("📊 Stats updated:", {
+                source: data.source || "unknown",
+                total_violations: totalViolations,
+                bien_so_nhan_dien: licensePlateCount,
+                runtime: data.runtime_formatted,
+                active: data.active,
+              });
+
+              // Nếu không active, có thể dừng polling (tùy chọn)
+              if (!data.active && data.source === "database") {
+                // Vẫn tiếp tục polling để cập nhật dữ liệu từ database
+                // hoặc dừng nếu không cần cập nhật liên tục
+                // clearInterval(processingInterval);
+                // processingInterval = null;
               }
             })
             .catch((error) => {
@@ -1089,14 +1143,30 @@
           document.getElementById("errorMessage").textContent = message;
         } else if (type === "info") {
           document.getElementById("infoMessage").textContent = message;
+        } else if (type === "success") {
+          // Dùng innerHTML để hỗ trợ format tốt hơn với nội dung dài
+          const successContent = document.getElementById("successAlert");
+          successContent.innerHTML = `<i class="fas fa-check-circle"></i> ${message.replace(
+            /\n/g,
+            "<br>"
+          )}`;
         }
         alert.style.display = "block";
 
-        if (type === "success" || type === "info") {
+        // Tính thời gian hiển thị dựa trên độ dài message
+        if (type === "success") {
+          // Success message với nhiều thông tin -> hiển thị lâu hơn (10 giây)
+          const messageLength = message.length;
+          const displayTime = messageLength > 100 ? 10000 : 5000;
+          setTimeout(() => {
+            alert.style.display = "none";
+          }, displayTime);
+        } else if (type === "info") {
           setTimeout(() => {
             alert.style.display = "none";
           }, 3000);
         }
+        // Error messages không tự động ẩn để user có thể đọc
       }
 
       function hideAllAlerts() {
@@ -1139,6 +1209,43 @@
           violationsList.removeChild(violationsList.lastChild);
         }
       }
+
+      // Load dữ liệu từ database khi trang load
+      function loadStatsFromDatabase() {
+        fetch("/helmet_detection_status")
+          .then((response) => response.json())
+          .then((data) => {
+            console.log("📊 [INIT] Loading stats from database:", data);
+
+            // Cập nhật thống kê ban đầu
+            const totalViolations = data.total_violations || 0;
+            const licensePlateCount =
+              data.license_plate_count || totalViolations;
+
+            document.getElementById("totalViolations").textContent =
+              totalViolations;
+            document.getElementById("licensePlateCount").textContent =
+              licensePlateCount;
+            document.getElementById("runtime").textContent =
+              data.runtime_formatted || "00:00:00";
+
+            // Hiển thị trạng thái
+            const statusElement = document.getElementById("status");
+            if (data.source === "database" && totalViolations > 0) {
+              statusElement.textContent = "Đã có dữ liệu từ DB";
+            } else {
+              statusElement.textContent = "Chờ";
+            }
+          })
+          .catch((error) => {
+            console.error("Error loading initial stats:", error);
+          });
+      }
+
+      // Gọi khi trang load xong
+      document.addEventListener("DOMContentLoaded", function () {
+        loadStatsFromDatabase();
+      });
     </script>
   </body>
 </html>
