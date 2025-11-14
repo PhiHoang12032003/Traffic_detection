@@ -4,6 +4,7 @@ from PIL import Image
 from ultralytics import YOLO
 import tempfile
 import createBB
+import createBB_lane
 import os
 from datetime import datetime
 import time
@@ -124,6 +125,8 @@ if __name__ == '__main__':
         stt_m = 0
         stt_ctb = 0
         examBB = createBB.infoObject()
+        examBB_motor = createBB_lane.infoObject_motor()  # Template cho vi phạm xe máy
+        examBB_car = createBB_lane.infoObject_car()      # Template cho vi phạm ô tô
         
         # Khởi tạo video writer cho output
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -236,10 +239,25 @@ if __name__ == '__main__':
                             if performance_config.should_save_evidence(stt_m):
                                 violation_img_path = imageMotorViolate(frame, roi_start[1], roi_end[1], roi_start[0], roi_end[0], stt_m)
                                 if violation_img_path:
-                                    report_path = os.path.join(DIRS['motor_reports'], f"{stt_m}.pdf")
-                                    with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_img:
-                                        Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).save(temp_img.name)
-                                        createBB.bienBanNopPhat(examBB, temp_img.name, violation_img_path, report_path)
+                                    try:
+                                        report_path = os.path.join(DIRS['motor_reports'], f"{stt_m}.pdf")
+                                        # Tạo ảnh tạm từ frame hiện tại
+                                        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_img:
+                                            frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                                            frame_pil.save(temp_img.name)
+                                            
+                                            # Cập nhật thời gian vi phạm vào template
+                                            examBB_motor['date'] = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                                            
+                                            # Tạo PDF biên bản vi phạm xe máy
+                                            createBB_lane.bienBanNopPhat(examBB_motor, temp_img.name, violation_img_path, report_path)
+                                            
+                                            # Lưu đường dẫn PDF vào violation info
+                                            violation_info['pdf_report_path'] = report_path
+                                            
+                                        print(f"✅ Đã tạo PDF biên bản xe máy vi phạm: {report_path}")
+                                    except Exception as e:
+                                        print(f"❌ Lỗi tạo PDF cho vi phạm xe máy {stt_m}: {e}")
 
                         # Ô tô đi vào làn xe máy
                         elif cls in [0, 3, 4] and start_line_motor[0] < center_x < end_line_motor[0]:
@@ -265,10 +283,25 @@ if __name__ == '__main__':
                             if performance_config.should_save_evidence(stt_ctb):
                                 violation_img_path = imageCTBViolate(frame, roi_start[1], roi_end[1], roi_start[0], roi_end[0], stt_ctb)
                                 if violation_img_path:
-                                    report_path = os.path.join(DIRS['car_reports'], f"{stt_ctb}.pdf")
-                                    with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_img:
-                                        Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).save(temp_img.name)
-                                        createBB.bienBanNopPhat(examBB, temp_img.name, violation_img_path, report_path)
+                                    try:
+                                        report_path = os.path.join(DIRS['car_reports'], f"{stt_ctb}.pdf")
+                                        # Tạo ảnh tạm từ frame hiện tại
+                                        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_img:
+                                            frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                                            frame_pil.save(temp_img.name)
+                                            
+                                            # Cập nhật thời gian vi phạm vào template
+                                            examBB_car['date'] = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                                            
+                                            # Tạo PDF biên bản vi phạm ô tô
+                                            createBB_lane.bienBanNopPhat(examBB_car, temp_img.name, violation_img_path, report_path)
+                                            
+                                            # Lưu đường dẫn PDF vào violation info
+                                            violation_info['pdf_report_path'] = report_path
+                                            
+                                        print(f"✅ Đã tạo PDF biên bản ô tô vi phạm: {report_path}")
+                                    except Exception as e:
+                                        print(f"❌ Lỗi tạo PDF cho vi phạm ô tô {stt_ctb}: {e}")
 
                         # --- Vẽ bounding box sau khi đã kiểm tra vi phạm ---
                         if is_violation:

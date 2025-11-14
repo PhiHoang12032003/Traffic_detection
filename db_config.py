@@ -201,18 +201,18 @@ class ViolationDatabase:
         self.db = db_config
     
     def insert_lane_violation(self, video_id, frame_number, time_in_video, violation_type,
-                              vehicle_type, confidence, bbox=None, image_path=None):
+                              vehicle_type, confidence, bbox=None, image_path=None, pdf_report_path=None):
         """Insert lane violation record"""
         query = """
             INSERT INTO lane_violations 
             (video_id, camera_id, frame_number, time_in_video, violation_type, 
-             vehicle_type, confidence, bbox_x1, bbox_y1, bbox_x2, bbox_y2, image_path)
-            VALUES (%s, 1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             vehicle_type, confidence, bbox_x1, bbox_y1, bbox_x2, bbox_y2, image_path, pdf_report_path)
+            VALUES (%s, 1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
         
         bbox_x1, bbox_y1, bbox_x2, bbox_y2 = bbox if bbox else (None, None, None, None)
         params = (video_id, frame_number, time_in_video, violation_type, vehicle_type, 
-                 confidence, bbox_x1, bbox_y1, bbox_x2, bbox_y2, image_path)
+                 confidence, bbox_x1, bbox_y1, bbox_x2, bbox_y2, image_path, pdf_report_path)
         
         violation_id = self.db.execute_query(query, params)
         return violation_id

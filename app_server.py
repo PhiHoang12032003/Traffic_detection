@@ -35,6 +35,7 @@ except ImportError as e:
 # from testRedLight import video_detect_red_light  # Removed - using new red_light_main system
 from red_light_main import process_red_light_video_complete, generate_frames_red_light_new
 import createBB
+import createBB_lane  # Import module tạo PDF cho lane violation
 from utils.helmet_pdf_utils import create_helmet_pdf_report, get_helmet_violation_info
 from werkzeug.utils import secure_filename
 import os
@@ -652,6 +653,74 @@ def video_detection_web(path_x=""):
                                 }
                                 lane_detection_data['violations'].append(violation_info)
                                 
+                                # TẠO PDF BIÊN BẢN VI PHẠM
+                                try:
+                                    # Tạo thư mục lưu ảnh và PDF vi phạm
+                                    if violation_type == "xe_may_vi_pham_lan_oto":
+                                        # Xe máy vi phạm
+                                        os.makedirs("data_xe_may_vi_pham", exist_ok=True)
+                                        os.makedirs("BienBanNopPhatXeMay", exist_ok=True)
+                                        
+                                        stt = lane_detection_data['motor_violations']
+                                        violation_img_path = f"data_xe_may_vi_pham/{stt}.jpg"
+                                        pdf_report_path = f"BienBanNopPhatXeMay/{stt}.pdf"
+                                        
+                                        # Lưu ảnh vi phạm
+                                        cv2.imwrite(violation_img_path, frame)
+                                        
+                                        # Tạo ảnh tạm từ frame hiện tại
+                                        frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                                        temp_image = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+                                        frame_pil.save(temp_image.name)
+                                        
+                                        # Cập nhật thông tin biên bản
+                                        examBB_motor = createBB_lane.infoObject_motor()
+                                        examBB_motor['date'] = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                                        
+                                        # Tạo PDF biên bản
+                                        createBB_lane.bienBanNopPhat(examBB_motor, temp_image.name, 
+                                                                    violation_img_path, pdf_report_path)
+                                        temp_image.close()
+                                        
+                                        print(f"✅ Đã tạo PDF biên bản xe máy: {pdf_report_path}")
+                                        violation_info['pdf_report_path'] = pdf_report_path
+                                        violation_info['image_path'] = violation_img_path
+                                        
+                                    elif violation_type == "oto_vi_pham_lan_xe_may":
+                                        # Ô tô vi phạm
+                                        os.makedirs("data_oto_vi_pham", exist_ok=True)
+                                        os.makedirs("BienBanNopPhatXeOTo", exist_ok=True)
+                                        
+                                        stt = lane_detection_data['car_violations']
+                                        violation_img_path = f"data_oto_vi_pham/{stt}.jpg"
+                                        pdf_report_path = f"BienBanNopPhatXeOTo/{stt}.pdf"
+                                        
+                                        # Lưu ảnh vi phạm
+                                        cv2.imwrite(violation_img_path, frame)
+                                        
+                                        # Tạo ảnh tạm từ frame hiện tại
+                                        frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                                        temp_image = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+                                        frame_pil.save(temp_image.name)
+                                        
+                                        # Cập nhật thông tin biên bản
+                                        examBB_car = createBB_lane.infoObject_car()
+                                        examBB_car['date'] = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                                        
+                                        # Tạo PDF biên bản
+                                        createBB_lane.bienBanNopPhat(examBB_car, temp_image.name, 
+                                                                    violation_img_path, pdf_report_path)
+                                        temp_image.close()
+                                        
+                                        print(f"✅ Đã tạo PDF biên bản ô tô: {pdf_report_path}")
+                                        violation_info['pdf_report_path'] = pdf_report_path
+                                        violation_info['image_path'] = violation_img_path
+                                        
+                                except Exception as pdf_error:
+                                    print(f"⚠️ Lỗi tạo PDF cho vi phạm: {pdf_error}")
+                                    import traceback
+                                    traceback.print_exc()
+                                
                                 # LƯU VÀO DATABASE
                                 video_id = lane_detection_data.get('video_id')
                                 print(f"🔍 [DB DEBUG] video_id={video_id}, violation_db={violation_db is not None}")
@@ -669,11 +738,12 @@ def video_detection_web(path_x=""):
                                             vehicle_type=result.names[cls],
                                             confidence=conf,
                                             bbox=[x1, y1, x2, y2],
-                                            image_path=None  # Could save frame if needed
+                                            image_path=violation_info.get('image_path'),  # Lưu đường dẫn ảnh
+                                            pdf_report_path=violation_info.get('pdf_report_path')  # Lưu đường dẫn PDF
                                         )
                                         
                                         if db_violation_id:
-                                            print(f"💾 Saved to DB: violation_id={db_violation_id}, type={db_violation_type}")
+                                            print(f"💾 Saved to DB: violation_id={db_violation_id}, type={db_violation_type}, PDF={violation_info.get('pdf_report_path')}")
                                     except Exception as e:
                                         print(f"⚠️ Failed to save violation to DB: {e}")
                                         import traceback
@@ -807,19 +877,27 @@ def video_detection_web(path_x=""):
                         # Chuyển đổi sang format cho export
                         for row in db_results:
                             time_seconds = row.get('time_in_video', 0)
+                            # Convert Decimal to float for JSON serialization
+                            if hasattr(time_seconds, '__float__'):
+                                time_seconds = float(time_seconds)
+                            
+                            confidence = row.get('confidence')
+                            if hasattr(confidence, '__float__'):
+                                confidence = float(confidence)
+                            
                             violation_info = {
-                                'violation_id': row.get('violation_id'),
-                                'frame_number': row.get('frame_number'),
+                                'violation_id': int(row.get('violation_id')) if row.get('violation_id') else None,
+                                'frame_number': int(row.get('frame_number')) if row.get('frame_number') else None,
                                 'time_seconds': time_seconds,
                                 'time_formatted': f"{int(time_seconds // 60):02d}:{int(time_seconds % 60):02d}",
                                 'violation_type': row.get('violation_type'),
                                 'vehicle_type': row.get('vehicle_type'),
-                                'confidence': row.get('confidence'),
+                                'confidence': confidence,
                                 'bbox': [
-                                    row.get('bbox_x1'),
-                                    row.get('bbox_y1'),
-                                    row.get('bbox_x2'),
-                                    row.get('bbox_y2')
+                                    int(row.get('bbox_x1')) if row.get('bbox_x1') is not None else None,
+                                    int(row.get('bbox_y1')) if row.get('bbox_y1') is not None else None,
+                                    int(row.get('bbox_x2')) if row.get('bbox_x2') is not None else None,
+                                    int(row.get('bbox_y2')) if row.get('bbox_y2') is not None else None
                                 ],
                                 'detected_at': row.get('detected_at').strftime('%Y-%m-%d %H:%M:%S') if row.get('detected_at') else ''
                             }
@@ -861,21 +939,29 @@ def video_detection_web(path_x=""):
                             
                             for row in db_results_all:
                                 time_seconds = row.get('time_in_video', 0)
+                                # Convert Decimal to float for JSON serialization
+                                if hasattr(time_seconds, '__float__'):
+                                    time_seconds = float(time_seconds)
+                                
+                                confidence = row.get('confidence')
+                                if hasattr(confidence, '__float__'):
+                                    confidence = float(confidence)
+                                
                                 violation_info = {
-                                    'violation_id': row.get('violation_id'),
-                                    'video_id': row.get('video_id'),
+                                    'violation_id': int(row.get('violation_id')) if row.get('violation_id') else None,
+                                    'video_id': int(row.get('video_id')) if row.get('video_id') else None,
                                     'video_filename': row.get('video_filename', 'N/A'),
-                                    'frame_number': row.get('frame_number'),
+                                    'frame_number': int(row.get('frame_number')) if row.get('frame_number') else None,
                                     'time_seconds': time_seconds,
                                     'time_formatted': f"{int(time_seconds // 60):02d}:{int(time_seconds % 60):02d}",
                                     'violation_type': row.get('violation_type'),
                                     'vehicle_type': row.get('vehicle_type'),
-                                    'confidence': row.get('confidence'),
+                                    'confidence': confidence,
                                     'bbox': [
-                                        row.get('bbox_x1'),
-                                        row.get('bbox_y1'),
-                                        row.get('bbox_x2'),
-                                        row.get('bbox_y2')
+                                        int(row.get('bbox_x1')) if row.get('bbox_x1') is not None else None,
+                                        int(row.get('bbox_y1')) if row.get('bbox_y1') is not None else None,
+                                        int(row.get('bbox_x2')) if row.get('bbox_x2') is not None else None,
+                                        int(row.get('bbox_y2')) if row.get('bbox_y2') is not None else None
                                     ],
                                     'detected_at': row.get('detected_at').strftime('%Y-%m-%d %H:%M:%S') if row.get('detected_at') else ''
                                 }
