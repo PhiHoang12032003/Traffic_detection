@@ -14,7 +14,7 @@
 
       body {
         font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         min-height: 100vh;
         color: #333;
       }
@@ -41,7 +41,7 @@
       .logo {
         font-size: 24px;
         font-weight: bold;
-        color: #ef4444;
+        color: #2563eb;
         display: flex;
         align-items: center;
       }
@@ -67,7 +67,7 @@
       }
 
       .nav-menu a:hover {
-        background: #ef4444;
+        background: #2563eb;
         color: white;
       }
 
@@ -99,7 +99,7 @@
 
       .page-title i {
         margin-right: 15px;
-        color: #ef4444;
+        color: #2563eb;
       }
 
       .page-subtitle {
@@ -170,12 +170,12 @@
       }
 
       .btn-primary {
-        background: #ef4444;
+        background: #2563eb;
         color: white;
       }
 
       .btn-primary:hover {
-        background: #dc2626;
+        background: #1d4ed8;
         transform: translateY(-2px);
       }
 
@@ -242,12 +242,12 @@
       }
 
       .btn-danger {
-        background: #ef4444;
+        background: #2563eb;
         color: white;
       }
 
       .btn-danger:hover {
-        background: #dc2626;
+        background: #1d4ed8;
         transform: translateY(-2px);
       }
 
@@ -262,8 +262,8 @@
       }
 
       .upload-section {
-        background: #fef2f2;
-        border: 2px dashed #fca5a5;
+        background: #eff6ff;
+        border: 2px dashed #93c5fd;
         border-radius: 15px;
         padding: 30px;
         text-align: center;
@@ -272,18 +272,18 @@
       }
 
       .upload-section:hover {
-        border-color: #ef4444;
-        background: #fef7f7;
+        border-color: #2563eb;
+        background: #dbeafe;
       }
 
       .upload-section.dragover {
-        border-color: #ef4444;
-        background: #fee2e2;
+        border-color: #2563eb;
+        background: #bfdbfe;
       }
 
       .upload-icon {
         font-size: 48px;
-        color: #fca5a5;
+        color: #93c5fd;
         margin-bottom: 15px;
       }
 
@@ -330,8 +330,8 @@
       }
 
       .light.red.active {
-        background: #ef4444;
-        box-shadow: 0 0 20px #ef4444;
+        background: #2563eb;
+        box-shadow: 0 0 20px #2563eb;
       }
 
       .light.yellow {
@@ -404,7 +404,7 @@
       }
 
       .stat-value.primary {
-        color: #ef4444;
+        color: #2563eb;
       }
       .stat-value.success {
         color: #10b981;
@@ -434,22 +434,22 @@
         display: flex;
         align-items: center;
         padding: 15px;
-        background: #fef2f2;
+        background: #eff6ff;
         border-radius: 10px;
         margin-bottom: 10px;
-        border-left: 4px solid #ef4444;
+        border-left: 4px solid #2563eb;
       }
 
       .violation-icon {
         width: 40px;
         height: 40px;
         border-radius: 50%;
-        background: #fee2e2;
+        background: #dbeafe;
         display: flex;
         align-items: center;
         justify-content: center;
         margin-right: 15px;
-        color: #ef4444;
+        color: #2563eb;
       }
 
       .violation-info {
@@ -470,8 +470,8 @@
       .license-plate {
         font-family: "Courier New", monospace;
         font-weight: bold;
-        color: #ef4444;
-        background: #fee2e2;
+        color: #2563eb;
+        background: #dbeafe;
         padding: 2px 6px;
         border-radius: 4px;
         font-size: 12px;
@@ -481,7 +481,7 @@
         width: 12px;
         height: 12px;
         border-radius: 50%;
-        background: #ef4444;
+        background: #2563eb;
         animation: pulse 2s infinite;
       }
 
@@ -672,7 +672,7 @@
             <div class="stats-card">
               <h3 class="stats-title">
                 <i class="fas fa-chart-bar"></i>
-                Thống Kê Thời Gian Thực
+                Thống Kê Vi Phạm
               </h3>
               <div class="stat-item">
                 <span class="stat-label">Trạng Thái</span>
@@ -697,10 +697,7 @@
                 <span class="stat-label">Ô Tô Vi Phạm</span>
                 <span class="stat-value danger" id="carViolations">0</span>
               </div>
-              <div class="stat-item">
-                <span class="stat-label">Biển Số Nhận Diện</span>
-                <span class="stat-value success" id="licensePlates">0</span>
-              </div>
+
               <div class="stat-item">
                 <span class="stat-label">Thời Gian Chạy</span>
                 <span class="stat-value primary" id="runtime">00:00:00</span>
@@ -739,7 +736,6 @@
         total: 0,
         motor: 0,
         car: 0,
-        licensePlates: 0,
       };
 
       // File upload handling
@@ -988,11 +984,11 @@
       }
 
       function resetStats() {
-        violationCount = { total: 0, motor: 0, car: 0, licensePlates: 0 };
+        violationCount = { total: 0, motor: 0, car: 0 };
         document.getElementById("totalViolations").textContent = "0";
         document.getElementById("motorViolations").textContent = "0";
         document.getElementById("carViolations").textContent = "0";
-        document.getElementById("licensePlates").textContent = "0";
+
         document.getElementById("runtime").textContent = "00:00:00";
       }
 
@@ -1028,20 +1024,13 @@
               const stats = data.stats;
               const recentViolations = data.recent_violations || [];
 
-              // Cập nhật số liệu tích lũy từ database
+              // ✅ Hiển thị TỔNG VI PHẠM (ALL TIME) thay vì chỉ hôm nay
               document.getElementById("totalViolations").textContent =
-                stats.total_violations_today || 0;
+                stats.total_violations || 0;
 
-              // Red light không phân biệt motor/car trong DB, hiển thị tổng
-              document.getElementById("motorViolations").textContent =
-                Math.floor((stats.total_violations_today || 0) * 0.4); // Giả sử 40% xe máy
-              document.getElementById("carViolations").textContent = Math.ceil(
-                (stats.total_violations_today || 0) * 0.6
-              ); // Giả sử 60% ô tô
-
-              // Hiển thị số biển số nhận diện được
-              document.getElementById("licensePlates").textContent =
-                stats.unique_vehicles_today || 0;
+              // ✅ Ô tô vi phạm = tổng vi phạm (vì chỉ phát hiện ô tô)
+              document.getElementById("carViolations").textContent =
+                stats.total_violations || 0;
 
               // Cập nhật danh sách vi phạm gần đây
               if (recentViolations.length > 0) {
@@ -1063,10 +1052,11 @@
           const violationItem = document.createElement("div");
           violationItem.className = "violation-item";
 
-          // Icon mặc định là car (vì đèn đỏ chủ yếu là ô tô)
+          // Icon là ô tô
           const icon = "fas fa-car";
           const licensePlate = violation.license_plate || "Unknown";
           const timeFormatted = violation.time_formatted || "N/A";
+          const dateFormatted = violation.date_formatted || "N/A";
 
           violationItem.innerHTML = `
             <div class="violation-icon">
@@ -1077,7 +1067,7 @@
                     Vi phạm đèn đỏ
                     <span class="license-plate">${licensePlate}</span>
                 </div>
-                <div class="violation-time">${timeFormatted} - Hôm nay</div>
+                <div class="violation-time">${timeFormatted} - ${dateFormatted}</div>
             </div>
           `;
 

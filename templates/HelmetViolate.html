@@ -14,7 +14,7 @@
 
       body {
         font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         min-height: 100vh;
         color: #333;
       }
@@ -41,7 +41,7 @@
       .logo {
         font-size: 24px;
         font-weight: bold;
-        color: #ef4444;
+        color: #2563eb;
         display: flex;
         align-items: center;
       }
@@ -67,7 +67,7 @@
       }
 
       .nav-menu a:hover {
-        background: #ef4444;
+        background: #2563eb;
         color: white;
       }
 
@@ -99,7 +99,7 @@
 
       .page-title i {
         margin-right: 15px;
-        color: #ef4444;
+        color: #2563eb;
       }
 
       .page-subtitle {
@@ -170,32 +170,32 @@
       }
 
       .btn-primary {
-        background: #ef4444;
+        background: #2563eb;
         color: white;
       }
 
       .btn-primary:hover {
-        background: #059669;
+        background: #1d4ed8;
         transform: translateY(-2px);
       }
 
       .btn-success {
-        background: #ef4444;
+        background: #2563eb;
         color: white;
       }
 
       .btn-success:hover {
-        background: #059669;
+        background: #1d4ed8;
         transform: translateY(-2px);
       }
 
       .btn-danger {
-        background: #ef4444;
+        background: #2563eb;
         color: white;
       }
 
       .btn-danger:hover {
-        background: #dc2626;
+        background: #1d4ed8;
         transform: translateY(-2px);
       }
 
@@ -220,13 +220,13 @@
       }
 
       .upload-section:hover {
-        border-color: #ef4444;
+        border-color: #2563eb;
         background: #ecfdf5;
       }
 
       .upload-section.dragover {
-        border-color: #ef4444;
-        background: #d1fae5;
+        border-color: #2563eb;
+        background: #dbeafe;
       }
 
       .upload-icon {
@@ -274,13 +274,13 @@
       }
 
       .method-option:hover {
-        border-color: #ef4444;
-        background: #f0fdf4;
+        border-color: #2563eb;
+        background: #f0f9ff;
       }
 
       .method-option.selected {
-        border-color: #ef4444;
-        background: #d1fae5;
+        border-color: #2563eb;
+        background: #dbeafe;
       }
 
       .method-option input {
@@ -331,10 +331,10 @@
       }
 
       .stat-value.primary {
-        color: #ef4444;
+        color: #2563eb;
       }
       .stat-value.success {
-        color: #ef4444;
+        color: #10b981;
       }
       .stat-value.warning {
         color: #f59e0b;
@@ -344,6 +344,7 @@
       }
 
       .progress-section {
+        display: none; /* Ẩn phần tiến độ xử lý */
         background: white;
         border-radius: 20px;
         padding: 25px;
@@ -368,7 +369,7 @@
 
       .progress-fill {
         height: 100%;
-        background: linear-gradient(90deg, #ef4444, #f87171);
+        background: linear-gradient(90deg, #2563eb, #3b82f6);
         border-radius: 10px;
         transition: width 0.3s ease;
         width: 0%;
@@ -398,22 +399,22 @@
         display: flex;
         align-items: center;
         padding: 15px;
-        background: #fef2f2;
+        background: #eff6ff;
         border-radius: 10px;
         margin-bottom: 10px;
-        border-left: 4px solid #ef4444;
+        border-left: 4px solid #2563eb;
       }
 
       .violation-icon {
         width: 40px;
         height: 40px;
         border-radius: 50%;
-        background: #fee2e2;
+        background: #dbeafe;
         display: flex;
         align-items: center;
         justify-content: center;
         margin-right: 15px;
-        color: #ef4444;
+        color: #2563eb;
       }
 
       .violation-info {
@@ -435,7 +436,7 @@
         width: 12px;
         height: 12px;
         border-radius: 50%;
-        background: #ef4444;
+        background: #2563eb;
         animation: pulse 2s infinite;
       }
 
@@ -461,7 +462,7 @@
         width: 40px;
         height: 40px;
         border: 4px solid #f3f4f6;
-        border-top: 4px solid #ef4444;
+        border-top: 4px solid #2563eb;
         border-radius: 50%;
         animation: spin 1s linear infinite;
         margin: 0 auto 15px;
@@ -495,9 +496,9 @@
       }
 
       .status-icon.active {
-        background: #ef4444;
+        background: #2563eb;
         color: white;
-        box-shadow: 0 0 20px #ef4444;
+        box-shadow: 0 0 20px #2563eb;
       }
 
       .status-text {
@@ -750,25 +751,13 @@
                 <span class="stat-value danger" id="totalViolations">0</span>
               </div>
               <div class="stat-item">
-                <span class="stat-label">Biển Số Nhận Diện</span>
+                <span class="stat-label">Xe máy vi phạm</span>
                 <span class="stat-value warning" id="licensePlateCount">0</span>
               </div>
               <div class="stat-item">
                 <span class="stat-label">Thời Gian Chạy</span>
                 <span class="stat-value" id="runtime">00:00:00</span>
               </div>
-            </div>
-
-            <!-- Progress Section -->
-            <div class="progress-section">
-              <h3 class="progress-title">
-                <i class="fas fa-tasks"></i>
-                Tiến Độ Xử Lý
-              </h3>
-              <div class="progress-bar">
-                <div class="progress-fill" id="progressFill"></div>
-              </div>
-              <div class="progress-text" id="progressText">Chưa bắt đầu</div>
             </div>
 
             <!-- Violations List -->

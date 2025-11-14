@@ -123,7 +123,6 @@ helmet_detection_data = {
     'video_writer': None,
     'output_path': None,
     'timestamp': None,
-    'frame_count': 0,
     'original_fps': None,
     'output_size': None,
     'detection_cooldown': {},  # Cooldown để tránh đếm trùng: {position_key: frame_number}
@@ -133,7 +132,9 @@ helmet_detection_data = {
     'recent_plates': [],  # Danh sách plate ứng viên gần đây: [{text, bbox, frame}]
     'current_with': 0,
     'current_without': 0,
-    'current_total': 0
+    'current_total': 0,
+    # Use None so generate_frames_helmet() knows to perform DB-initialization
+    'frame_count': None
 }
 
 # MySQL Configuration - Commented out for easier setup
@@ -1235,19 +1236,94 @@ def generate_frames_helmet(path_x, video_id=None):
         # Ensure output directory exists for analyzed video
         os.makedirs('output', exist_ok=True)
         
+        # ✅ LOAD DỮ LIỆU TỪ DATABASE TRƯỚC KHI RESET
         # Initialize helmet detection data ONCE khi bắt đầu
         if helmet_detection_data.get('frame_count') is None:
+            print("🔧 [INIT] Initializing helmet detection data...")
+            
+            # TẢI DỮ LIỆU TỪ DATABASE (nếu có)
+            existing_without_helmet = 0
+            existing_with_helmet = 0
+            existing_violations = []
+            
+            if violation_db is not None:
+                try:
+                    # Truy vấn TẤT CẢ vi phạm helmet từ database
+                    query = """
+                        SELECT 
+                            violation_id,
+                            video_id,
+                            frame_number,
+                            time_in_video,
+                            has_helmet,
+                            confidence,
+                            license_plate,
+                            bbox_x1, bbox_y1, bbox_x2, bbox_y2,
+                            detected_at
+                        FROM helmet_violations
+                        ORDER BY detected_at DESC
+                    """
+                    db_results = violation_db.db.execute_query(query, fetch=True)
+                    
+                    if db_results:
+                        print(f"📊 [HELMET INIT] Loaded {len(db_results)} violations from database")
+                        
+                        for row in db_results:
+                            has_helmet = row.get('has_helmet', True)
+                            
+                            # Đếm theo loại
+                            if has_helmet:
+                                existing_with_helmet += 1
+                            else:
+                                existing_without_helmet += 1
+                            
+                            # Lưu vào violations list
+                            time_seconds = row.get('time_in_video', 0)
+                            violation_info = {
+                                'violation_id': row.get('violation_id'),
+                                'video_id': row.get('video_id'),
+                                'frame_number': row.get('frame_number'),
+                                'time_seconds': time_seconds,
+                                'time_formatted': f"{int(time_seconds // 60):02d}:{int(time_seconds % 60):02d}",
+                                'has_helmet': has_helmet,
+                                'confidence': row.get('confidence'),
+                                'license_plate': row.get('license_plate'),
+                                'bbox': [
+                                    row.get('bbox_x1'),
+                                    row.get('bbox_y1'),
+                                    row.get('bbox_x2'),
+                                    row.get('bbox_y2')
+                                ],
+                                'detected_at': row.get('detected_at').strftime('%Y-%m-%d %H:%M:%S') if row.get('detected_at') else ''
+                            }
+                            existing_violations.append(violation_info)
+                        
+                        print(f"✅ [HELMET INIT] Loaded: With helmet={existing_with_helmet}, Without helmet={existing_without_helmet}")
+                    else:
+                        print("ℹ️ [HELMET INIT] No existing data in database")
+                        
+                except Exception as db_error:
+                    print(f"⚠️ [HELMET INIT] Failed to load from database: {db_error}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                print("ℹ️ [HELMET INIT] No database connection - starting fresh")
+            
+            # SET DỮ LIỆU - GIỮ NGUYÊN SỐ LIỆU CŨ, CHỈ RESET CÁC BIẾN TẠM THỜI
             helmet_detection_data['frame_count'] = 0
-            helmet_detection_data['violations'] = []
-            helmet_detection_data['total_violations'] = 0
-            helmet_detection_data['with_helmet'] = 0
-            helmet_detection_data['without_helmet'] = 0
+            helmet_detection_data['violations'] = existing_violations  # ✅ GIỮ DỮ LIỆU CŨ
+            helmet_detection_data['total_violations'] = existing_without_helmet  # ✅ GIỮ SỐ LIỆU CŨ
+            helmet_detection_data['with_helmet'] = existing_with_helmet  # ✅ GIỮ SỐ LIỆU CŨ
+            helmet_detection_data['without_helmet'] = existing_without_helmet  # ✅ GIỮ SỐ LIỆU CŨ
+            
+            # RESET CÁC BIẾN TẠM THỜI (cho phiên phân tích mới)
             helmet_detection_data['detection_cooldown'] = {}
             helmet_detection_data['frame_detections'] = set()
             helmet_detection_data['temporal_votes'] = {}
             helmet_detection_data['state_map'] = {}
             helmet_detection_data['recent_plates'] = []
-            print("🔧 [INIT] Helmet detection data initialized")
+            
+            print(f"✅ [INIT COMPLETE] Starting counts: With={existing_with_helmet}, Without={existing_without_helmet}, Total violations={len(existing_violations)}")
         
         frame_number = 0
         
@@ -3049,21 +3125,91 @@ def start_helmet_detection():
         except Exception as e:
             print(f"⚠️ [CAMERA 2 - START] Failed to update video status: {e}")
     
-    # Reset helmet detection data
+    # ✅ TẢI DỮ LIỆU TỪ DATABASE TRƯỚC KHI RESET
+    print("🔧 [START] Loading existing data from database...")
+    
+    existing_without_helmet = 0
+    existing_with_helmet = 0
+    existing_violations = []
+    
+    if violation_db is not None:
+        try:
+            # Truy vấn TẤT CẢ vi phạm helmet từ database
+            query = """
+                SELECT 
+                    violation_id,
+                    video_id,
+                    frame_number,
+                    time_in_video,
+                    has_helmet,
+                    confidence,
+                    license_plate,
+                    bbox_x1, bbox_y1, bbox_x2, bbox_y2,
+                    detected_at
+                FROM helmet_violations
+                ORDER BY detected_at DESC
+            """
+            db_results = violation_db.db.execute_query(query, fetch=True)
+            
+            if db_results:
+                print(f"📊 [START] Loaded {len(db_results)} violations from database")
+                
+                for row in db_results:
+                    has_helmet = row.get('has_helmet', True)
+                    
+                    # Đếm theo loại
+                    if has_helmet:
+                        existing_with_helmet += 1
+                    else:
+                        existing_without_helmet += 1
+                    
+                    # Lưu vào violations list
+                    time_seconds = row.get('time_in_video', 0)
+                    violation_info = {
+                        'violation_id': row.get('violation_id'),
+                        'video_id': row.get('video_id'),
+                        'frame_number': row.get('frame_number'),
+                        'time_seconds': time_seconds,
+                        'time_formatted': f"{int(time_seconds // 60):02d}:{int(time_seconds % 60):02d}",
+                        'has_helmet': has_helmet,
+                        'confidence': row.get('confidence'),
+                        'license_plate': row.get('license_plate'),
+                        'bbox': [
+                            row.get('bbox_x1'),
+                            row.get('bbox_y1'),
+                            row.get('bbox_x2'),
+                            row.get('bbox_y2')
+                        ],
+                        'detected_at': row.get('detected_at').strftime('%Y-%m-%d %H:%M:%S') if row.get('detected_at') else ''
+                    }
+                    existing_violations.append(violation_info)
+                
+                print(f"✅ [START] Loaded: With helmet={existing_with_helmet}, Without helmet={existing_without_helmet}")
+            else:
+                print("ℹ️ [START] No existing data in database")
+                
+        except Exception as db_error:
+            print(f"⚠️ [START] Failed to load from database: {db_error}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("ℹ️ [START] No database connection - starting fresh")
+    
+    # ✅ RESET CHỈ CÁC BIẾN TẠM THỜI, GIỮ NGUYÊN DỮ LIỆU TỪ DATABASE
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     helmet_detection_data = {
-        'violations': [],
-        'total_violations': 0,
-        'with_helmet': 0,  # Reset counter
-        'without_helmet': 0,  # Reset counter
+        'violations': existing_violations,  # ✅ GIỮ DỮ LIỆU CŨ
+        'total_violations': existing_without_helmet,  # ✅ GIỮ SỐ LIỆU CŨ
+        'with_helmet': existing_with_helmet,  # ✅ GIỮ SỐ LIỆU CŨ
+        'without_helmet': existing_without_helmet,  # ✅ GIỮ SỐ LIỆU CŨ
         'start_time': time.time(),
         'video_writer': None,
         'output_path': None,
         'timestamp': timestamp,
-        'frame_count': 0,
+        'frame_count': None,  # ✅ Set None để trigger load database trong generate_frames_helmet
         'original_fps': None,
         'output_size': None,
-        'detection_cooldown': {},  # Reset cooldown
+        'detection_cooldown': {},  # Reset cooldown cho phiên mới
         'frame_detections': set(),  # Reset frame tracking
         'temporal_votes': {},  # Reset vote memory
         'state_map': {},  # Reset state machine memory
@@ -3072,6 +3218,8 @@ def start_helmet_detection():
         'current_without': 0,
         'current_total': 0
     }
+    
+    print(f"✅ [START COMPLETE] Starting counts: With={existing_with_helmet}, Without={existing_without_helmet}, Total violations={len(existing_violations)}")
     
     return jsonify({
         'success': True,
@@ -3196,26 +3344,30 @@ def get_helmet_detection_status():
     else:
         runtime_seconds = 0
     
-    # LẤY DỮ LIỆU TỪ DATABASE (tổng tích lũy)
+    # LẤY DỮ LIỆU TỪ DATABASE (tổng tích lũy - ALL TIME)
     db_with_helmet = 0
     db_without_helmet = 0
     db_total_detections = 0
     
     if stats_db:
         try:
-            today = datetime.date.today()
             camera_id = 2  # Camera 2 = Helmet
             
-            # Lấy thống kê từ database
-            helmet_stats = stats_db.get_helmet_stats(camera_id, date=today)
+            # ✅ Lấy thống kê TOÀN BỘ từ database (không truyền date)
+            print(f"🔍 [DEBUG] Calling get_helmet_stats(camera_id={camera_id}) WITHOUT date filter")
+            helmet_stats = stats_db.get_helmet_stats(camera_id)
+            print(f"🔍 [DEBUG] Raw helmet_stats result: {helmet_stats}")
+            
             if helmet_stats:
                 db_without_helmet = helmet_stats.get('no_helmet_count', 0) or 0
                 db_with_helmet = helmet_stats.get('with_helmet_count', 0) or 0
                 db_total_detections = helmet_stats.get('total_detections', 0) or 0
             
-            print(f"📊 [HELMET DB] Today: without={db_without_helmet}, with={db_with_helmet}, total={db_total_detections}")
+            print(f"📊 [HELMET DB] ALL TIME: without={db_without_helmet}, with={db_with_helmet}, total={db_total_detections}")
         except Exception as e:
             print(f"⚠️ Error fetching helmet stats from DB: {e}")
+            import traceback
+            traceback.print_exc()
     
     # Nếu đang active, ưu tiên dữ liệu realtime từ session (đang xử lý)
     # Nếu không active, dùng dữ liệu từ database (đã xử lý xong)
@@ -3224,11 +3376,13 @@ def get_helmet_detection_status():
         with_helmet = helmet_detection_data.get('with_helmet', 0)
         without_helmet = helmet_detection_data.get('without_helmet', 0)
         total_detections = with_helmet + without_helmet
+        print(f"🔴 [ACTIVE] Using REALTIME data from session")
     else:
         # Không active: dùng dữ liệu từ database
         with_helmet = db_with_helmet
         without_helmet = db_without_helmet
         total_detections = db_total_detections
+        print(f"🟢 [INACTIVE] Using DATABASE data: without={without_helmet}, with={with_helmet}, total={total_detections}")
     
     # Tính tỷ lệ vi phạm
     if total_detections > 0:
@@ -3242,7 +3396,7 @@ def get_helmet_detection_status():
     cur_total = helmet_detection_data.get('current_total', 0) if helmet_detection_active else 0
     cur_rate = round((cur_without / cur_total) * 100, 1) if cur_total > 0 else 0
 
-    return jsonify({
+    response_data = {
         'active': helmet_detection_active,
         # Cumulative (từ database hoặc session nếu đang chạy)
         'total_violations': without_helmet,
@@ -3260,7 +3414,10 @@ def get_helmet_detection_status():
         'runtime_formatted': f"{int(runtime_seconds//3600):02d}:{int((runtime_seconds%3600)//60):02d}:{int(runtime_seconds%60):02d}",
         'last_updated': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         'source': 'database' if not helmet_detection_active else 'realtime'
-    })
+    }
+    
+    print(f"📤 [RESPONSE] Sending helmet stats: total_violations={response_data['total_violations']}, source={response_data['source']}")
+    return jsonify(response_data)
 
 
 # Generate frames for red light detection (basic streaming)
@@ -4876,6 +5033,7 @@ def get_red_light_detection_status():
             })
         
         today = datetime.date.today()
+        today_str = today.strftime('%Y-%m-%d')  # ✅ Convert to string format
         camera_id = 3  # Camera 3 = Red Light
         
         # Lấy tổng vi phạm ALL TIME từ database
@@ -4888,7 +5046,7 @@ def get_red_light_detection_status():
         total_violations_today = redlight_stats_today['violation_count'] if redlight_stats_today else 0
         unique_vehicles_today = redlight_stats_today['unique_vehicles'] if redlight_stats_today else 0
         
-        # Lấy danh sách vi phạm gần đây (10 vi phạm mới nhất HÔM NAY)
+        # ✅ Lấy danh sách vi phạm gần đây (10 vi phạm mới nhất - TOÀN BỘ)
         recent_violations = []
         try:
             query = """
@@ -4899,16 +5057,39 @@ def get_red_light_detection_status():
                     license_plate,
                     confidence,
                     detected_at,
-                    DATE_FORMAT(detected_at, '%H:%i:%s') as time_formatted
+                    TIME(detected_at) as time_formatted,
+                    DATE(detected_at) as violation_date
                 FROM red_light_violations
-                WHERE camera_id = %s AND DATE(detected_at) = %s
+                WHERE camera_id = %s
                 ORDER BY detected_at DESC
                 LIMIT 10
             """
-            results = violation_db.db.execute_query(query, (camera_id, today), fetch=True)
+            print(f"🔍 Debug: Querying ALL red_light_violations for camera_id={camera_id}")
+            results = violation_db.db.execute_query(query, (camera_id,), fetch=True)
             
             if results:
+                print(f"✅ Found {len(results)} red light violations from database")
                 for row in results:
+                    # Format time_formatted properly (TIME() returns timedelta)
+                    time_str = ''
+                    if row.get('time_formatted'):
+                        if isinstance(row['time_formatted'], datetime.timedelta):
+                            total_seconds = int(row['time_formatted'].total_seconds())
+                            hours = total_seconds // 3600
+                            minutes = (total_seconds % 3600) // 60
+                            seconds = total_seconds % 60
+                            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                        else:
+                            time_str = str(row['time_formatted'])
+                    
+                    # Format violation date
+                    date_str = ''
+                    if row.get('violation_date'):
+                        if isinstance(row['violation_date'], datetime.date):
+                            date_str = row['violation_date'].strftime('%d/%m/%Y')
+                        else:
+                            date_str = str(row['violation_date'])
+                    
                     recent_violations.append({
                         'violation_id': row['violation_id'],
                         'frame_number': row['frame_number'],
@@ -4916,10 +5097,15 @@ def get_red_light_detection_status():
                         'license_plate': row['license_plate'] or 'Unknown',
                         'confidence': float(row['confidence']) if row['confidence'] else 0,
                         'detected_at': row['detected_at'].isoformat() if row['detected_at'] else '',
-                        'time_formatted': row['time_formatted'] or ''
+                        'time_formatted': time_str,
+                        'date_formatted': date_str
                     })
+            else:
+                print(f"⚠️ No red light violations found in database")
         except Exception as e:
             print(f"⚠️ Error fetching recent violations: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Tính runtime (giả sử session bắt đầu từ vi phạm đầu tiên trong ngày)
         runtime_seconds = 0
@@ -4936,7 +5122,7 @@ def get_red_light_detection_status():
             except Exception as e:
                 print(f"⚠️ Error calculating runtime: {e}")
         
-        return jsonify({
+        response_data = {
             'success': True,
             'active': False,  # Red light không có realtime detection như lane/helmet
             'stats': {
@@ -4948,7 +5134,10 @@ def get_red_light_detection_status():
             },
             'recent_violations': recent_violations,
             'source': 'database'
-        })
+        }
+        
+        print(f"📊 Sending red light stats: {total_violations_today} violations today, {len(recent_violations)} recent violations")
+        return jsonify(response_data)
         
     except Exception as e:
         print(f"❌ Red light detection status error: {e}")

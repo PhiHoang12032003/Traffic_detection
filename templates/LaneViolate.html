@@ -557,7 +557,7 @@
             <div class="stats-card">
               <h3 class="stats-title">
                 <i class="fas fa-chart-bar"></i>
-                Thống Kê Thời Gian Thực
+                Thống Kê Vi Phạm
               </h3>
               <div class="stat-item">
                 <span class="stat-label">Trạng Thái</span>
@@ -727,7 +727,7 @@
 
         document.getElementById("stopBtn").disabled = true;
         document.getElementById("status").textContent = "Đang dừng...";
-        
+
         // GỌI API để dừng detection và export kết quả
         fetch("/stop_lane_detection", {
           method: "POST",
@@ -738,16 +738,18 @@
           .then((response) => response.json())
           .then((data) => {
             console.log("Stop response:", data);
-            
+
             if (data.success) {
               // ✅ Hiển thị success alert KHÔNG tự động ẩn
               const successAlert = document.getElementById("successAlert");
               successAlert.style.display = "block";
-              
+
               // Tạo nội dung với links download
-              let alertContent = '<div style="display: flex; align-items: center; margin-bottom: 15px;"><i class="fas fa-check-circle" style="margin-right: 10px;"></i><strong>Video đã được tải lên thành công!</strong></div>';
-              alertContent += '<div style="background: white; padding: 15px; border-radius: 10px; margin-top: 10px;"><h6 style="color: #059669; margin-bottom: 10px;"><i class="fas fa-download"></i> Tải kết quả:</h6><ul style="list-style: none; padding: 0; margin: 0;">';
-              
+              let alertContent =
+                '<div style="display: flex; align-items: center; margin-bottom: 15px;"><i class="fas fa-check-circle" style="margin-right: 10px;"></i><strong>Video đã được tải lên thành công!</strong></div>';
+              alertContent +=
+                '<div style="background: white; padding: 15px; border-radius: 10px; margin-top: 10px;"><h6 style="color: #059669; margin-bottom: 10px;"><i class="fas fa-download"></i> Tải kết quả:</h6><ul style="list-style: none; padding: 0; margin: 0;">';
+
               if (data.files.video && data.files_exist.video) {
                 alertContent += `<li style="margin-bottom: 8px;">
                   <a href="/download_lane_results?file_type=video&filename=${data.files.video}" class="btn btn-primary" style="width: 100%; text-align: left; padding: 10px 15px;" download>
@@ -755,7 +757,7 @@
                   </a>
                 </li>`;
               }
-              
+
               if (data.files.csv && data.files_exist.csv) {
                 alertContent += `<li style="margin-bottom: 8px;">
                   <a href="/download_lane_results?file_type=csv&filename=${data.files.csv}" class="btn btn-success" style="width: 100%; text-align: left; padding: 10px 15px;" download>
@@ -763,7 +765,7 @@
                   </a>
                 </li>`;
               }
-              
+
               if (data.files.excel && data.files_exist.excel) {
                 alertContent += `<li style="margin-bottom: 8px;">
                   <a href="/download_lane_results?file_type=excel&filename=${data.files.excel}" class="btn btn-success" style="width: 100%; text-align: left; padding: 10px 15px;" download>
@@ -771,7 +773,7 @@
                   </a>
                 </li>`;
               }
-              
+
               if (data.files.json && data.files_exist.json) {
                 alertContent += `<li style="margin-bottom: 8px;">
                   <a href="/download_lane_results?file_type=json&filename=${data.files.json}" class="btn btn-secondary" style="width: 100%; text-align: left; padding: 10px 15px; background: #6b7280;" download>
@@ -779,20 +781,25 @@
                   </a>
                 </li>`;
               }
-              
-              alertContent += '</ul></div>';
-              
+
+              alertContent += "</ul></div>";
+
               // Set nội dung vào alert
               successAlert.innerHTML = alertContent;
-              
+
               // Hiển thị thống kê
               if (data.summary) {
-                console.log(`📊 Tổng kết: ${data.summary.motor_violations} xe máy, ${data.summary.car_violations} ô tô`);
+                console.log(
+                  `📊 Tổng kết: ${data.summary.motor_violations} xe máy, ${data.summary.car_violations} ô tô`
+                );
               }
             } else {
-              showAlert("error", "Lỗi khi dừng: " + (data.error || "Unknown error"));
+              showAlert(
+                "error",
+                "Lỗi khi dừng: " + (data.error || "Unknown error")
+              );
             }
-            
+
             document.getElementById("status").textContent = "Đã dừng";
             document.getElementById("statusIndicator").style.display = "none";
             document.getElementById("startBtn").disabled = false;
@@ -907,28 +914,34 @@
 
       // Cập nhật thống kê từ database (luôn chạy, không phụ thuộc vào video)
       function updateRealTimeStats() {
-        fetch('/lane_detection_status')
-          .then(response => response.json())
-          .then(data => {
+        fetch("/lane_detection_status")
+          .then((response) => response.json())
+          .then((data) => {
             // Cập nhật thống kê thời gian thực từ database
-            document.getElementById("totalViolations").textContent = data.total_violations || 0;
-            document.getElementById("motorViolations").textContent = data.motor_violations || 0;
-            document.getElementById("carViolations").textContent = data.car_violations || 0;
-            
+            document.getElementById("totalViolations").textContent =
+              data.total_violations || 0;
+            document.getElementById("motorViolations").textContent =
+              data.motor_violations || 0;
+            document.getElementById("carViolations").textContent =
+              data.car_violations || 0;
+
             // Cập nhật runtime nếu đang detect
             if (data.runtime_formatted && isDetecting) {
-              document.getElementById("runtime").textContent = data.runtime_formatted;
+              document.getElementById("runtime").textContent =
+                data.runtime_formatted;
             }
-            
+
             // Log để debug (chỉ log nếu có thay đổi)
-            if (window.lastStatsData === undefined || 
-                JSON.stringify(window.lastStatsData) !== JSON.stringify(data)) {
-              console.log('📊 Stats updated from database:', data);
+            if (
+              window.lastStatsData === undefined ||
+              JSON.stringify(window.lastStatsData) !== JSON.stringify(data)
+            ) {
+              console.log("📊 Stats updated from database:", data);
               window.lastStatsData = data;
             }
           })
-          .catch(error => {
-            console.error('❌ Error fetching stats:', error);
+          .catch((error) => {
+            console.error("❌ Error fetching stats:", error);
           });
       }
 
@@ -965,7 +978,7 @@
       // Cập nhật thống kê TỰ ĐỘNG từ database MySQL
       // Load ngay khi mở trang
       updateRealTimeStats();
-      
+
       // Kiểm tra database MỖI 2 GIÂY - nếu có vi phạm mới → tự động cập nhật
       setInterval(() => {
         updateRealTimeStats();
