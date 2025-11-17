@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import json
 import time
+from decimal import Decimal
 from PIL import Image
 from ultralytics import YOLO
 
@@ -50,6 +51,21 @@ video_db = None
 violation_db = None
 stats_db = None
 chatbot = None  # Gemini AI Chatbot instance
+
+def convert_decimal_to_float(obj):
+    """
+    Recursively convert Decimal objects to float for JSON serialization
+    Chuyển đổi Decimal thành float để có thể serialize JSON
+    """
+    if isinstance(obj, Decimal):
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {key: convert_decimal_to_float(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_decimal_to_float(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(convert_decimal_to_float(item) for item in obj)
+    return obj
 
 def init_database(password=''):
     """Initialize database connection"""
@@ -1083,6 +1099,8 @@ def video_detection_web(path_x=""):
             # Xuất JSON chi tiết
             json_filename = os.path.join(output_dir, f"lane_violations_details_{timestamp}.json")
             with open(json_filename, 'w', encoding='utf-8') as f:
+                # Convert Decimal to float before JSON serialization
+                violations_data_converted = convert_decimal_to_float(violations_data)
                 json.dump({
                     'video_info': {
                         'video_id': video_id,
@@ -1094,7 +1112,7 @@ def video_detection_web(path_x=""):
                         'fps': original_fps,
                         'data_source': 'MySQL Database' if video_id and violation_db else 'Memory'
                     },
-                    'violations': violations_data,
+                    'violations': violations_data_converted,
                     'summary': {
                         'total_violations': len(violations_data),
                         'motor_violations': motor_count_db,
@@ -3374,6 +3392,8 @@ def stop_helmet_detection():
         # JSON chi tiết
         json_filename = os.path.join(output_dir, f"helmet_violations_details_{timestamp}.json")
         with open(json_filename, 'w', encoding='utf-8') as f:
+            # Convert Decimal to float before JSON serialization
+            violations_data_converted = convert_decimal_to_float(violations_data)
             json.dump({
                 'video_info': {
                     'input_path': session.get('uploaded_video_helmet', ''),
@@ -3385,7 +3405,7 @@ def stop_helmet_detection():
                     'frames_processed': helmet_detection_data.get('frame_count', 0),
                     'processing_time': time.time() - helmet_detection_data.get('start_time', time.time())
                 },
-                'violations': violations_data
+                'violations': violations_data_converted
             }, f, indent=2, ensure_ascii=False)
         print(f"✅ Đã xuất helmet JSON: {json_filename}")
         
