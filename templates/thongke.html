@@ -474,19 +474,19 @@
             Bộ Lọc Thời Gian
           </div>
           <div class="filter-buttons">
-            <button class="filter-btn active" onclick="filterData('today')">
+            <button class="filter-btn active" onclick="filterData('today', this)">
               Hôm Nay
             </button>
-            <button class="filter-btn" onclick="filterData('week')">
+            <button class="filter-btn" onclick="filterData('week', this)">
               Tuần Này
             </button>
-            <button class="filter-btn" onclick="filterData('month')">
+            <button class="filter-btn" onclick="filterData('month', this)">
               Tháng Này
             </button>
-            <button class="filter-btn" onclick="filterData('year')">
+            <button class="filter-btn" onclick="filterData('year', this)">
               Năm Nay
             </button>
-            <button class="filter-btn" onclick="filterData('all')">
+            <button class="filter-btn" onclick="filterData('all', this)">
               Tất Cả
             </button>
           </div>
@@ -1080,145 +1080,182 @@
       }
 
       // Filter data by time period
-      function filterData(period) {
+      function filterData(period, buttonElement) {
         currentFilter = period;
 
         // Update active button
         document.querySelectorAll(".filter-btn").forEach((btn) => {
           btn.classList.remove("active");
         });
-        event.target.classList.add("active");
+        // Use buttonElement if provided, otherwise try to find the button
+        const targetButton = buttonElement || event?.target || document.querySelector(`.filter-btn[onclick*="${period}"]`);
+        if (targetButton) {
+          targetButton.classList.add("active");
+        }
 
         // Load data immediately without setTimeout
         loadData(period);
       }
 
       // Load data based on filter
-      function loadData(period) {
-        // Simulate different data for different periods
-        const data = {
-          today: {
-            total: 15,
-            today: 15,
-            lane: 8,
-            helmet: 7,
-            redlight: 5,
-            trend: [2, 3, 1, 4, 2, 2, 1],
-            pie: [8, 7, 5],
-            cameraToday: [8, 7, 5],
-            cameraTotal: [8, 7, 5],
-            hourly: [2, 1, 3, 5, 4, 6, 8, 3],
-            week: {
-              lane: [5, 6, 4, 7, 6, 5, 8],
-              helmet: [3, 4, 3, 5, 5, 4, 7],
-              redlight: [2, 2, 2, 3, 3, 3, 5],
-            },
-          },
-          week: {
-            total: 89,
-            today: 15,
-            lane: 45,
-            helmet: 32,
-            redlight: 12,
-            trend: [12, 19, 15, 25, 22, 18, 14],
-            pie: [45, 32, 12],
-            cameraToday: [8, 7, 5],
-            cameraTotal: [45, 32, 12],
-            hourly: [8, 5, 12, 15, 18, 22, 25, 12],
-            week: {
-              lane: [5, 8, 6, 12, 9, 7, 8],
-              helmet: [3, 5, 4, 8, 7, 5, 7],
-              redlight: [2, 3, 3, 5, 4, 3, 5],
-            },
-          },
-          month: {
-            total: 356,
-            today: 15,
-            lane: 180,
-            helmet: 120,
-            redlight: 56,
-            trend: [45, 52, 38, 67, 59, 48, 47],
-            pie: [180, 120, 56],
-            cameraToday: [8, 7, 5],
-            cameraTotal: [180, 120, 56],
-            hourly: [15, 8, 18, 45, 52, 67, 89, 35],
-            week: {
-              lane: [22, 28, 24, 32, 29, 25, 28],
-              helmet: [15, 18, 16, 22, 20, 18, 21],
-              redlight: [8, 10, 9, 13, 12, 10, 12],
-            },
-          },
-          year: {
-            total: 4256,
-            today: 15,
-            lane: 2156,
-            helmet: 1456,
-            redlight: 644,
-            trend: [320, 380, 290, 450, 420, 380, 360],
-            pie: [2156, 1456, 644],
-            cameraToday: [8, 7, 5],
-            cameraTotal: [2156, 1456, 644],
-            hourly: [180, 120, 220, 450, 520, 580, 650, 380],
-            week: {
-              lane: [280, 320, 290, 380, 350, 310, 340],
-              helmet: [180, 210, 190, 250, 230, 205, 225],
-              redlight: [85, 95, 88, 110, 102, 92, 98],
-            },
-          },
-          all: {
-            total: 12567,
-            today: 15,
-            lane: 6356,
-            helmet: 4256,
-            redlight: 1955,
-            trend: [950, 1100, 890, 1250, 1180, 1050, 980],
-            pie: [6356, 4256, 1955],
-            cameraToday: [8, 7, 5],
-            cameraTotal: [6356, 4256, 1955],
-            hourly: [520, 380, 650, 1250, 1450, 1680, 1850, 1100],
-            week: {
-              lane: [850, 920, 880, 1100, 1020, 950, 1000],
-              helmet: [550, 620, 580, 750, 690, 640, 680],
-              redlight: [260, 290, 275, 340, 315, 295, 310],
-            },
-          },
-        };
-
-        const currentData = data[period];
-
-        // Update stats
-        animateNumber("totalViolations", currentData.total);
-        animateNumber("todayViolations", currentData.today);
-        animateNumber("laneViolations", currentData.lane);
-        animateNumber("helmetViolations", currentData.helmet);
-
-        // Update charts
-        if (simpleLineChart) {
-          simpleLineChart.data.datasets[0].data = currentData.trend;
-          simpleLineChart.update("none");
-        }
-
-        if (pieChart) {
-          pieChart.data.datasets[0].data = currentData.pie;
-          pieChart.update("none");
-        }
-
-        if (cameraCompareChart) {
-          cameraCompareChart.data.datasets[0].data = currentData.cameraToday;
-          cameraCompareChart.data.datasets[1].data = currentData.cameraTotal;
-          cameraCompareChart.update("none");
-        }
-
-        if (hourlyChart) {
-          hourlyChart.data.datasets[0].data = currentData.hourly;
-          hourlyChart.update("none");
-        }
-
-        if (weekTrendChart) {
-          weekTrendChart.data.datasets[0].data = currentData.week.lane;
-          weekTrendChart.data.datasets[1].data = currentData.week.helmet;
-          weekTrendChart.data.datasets[2].data = currentData.week.redlight;
-          weekTrendChart.update("none");
+      async function loadData(period) {
+        try {
+          console.log(`📊 Loading data for period: ${period}`);
+          
+          // Prevent multiple simultaneous loads
+          if (isLoadingData) {
+            console.log("⏳ Already loading data, waiting...");
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (isLoadingData) {
+              console.log("⏳ Still loading, skipping duplicate request");
+              return;
+            }
+          }
+          
+          isLoadingData = true;
+          
+          // Load overall stats for the period
+          const overallResp = await fetch(`/api/stats/overall/${period}`);
+          const overallData = await overallResp.json();
+          
+          console.log(`📊 API Response for ${period}:`, overallData);
+          
+          if (overallData.success) {
+            const summary = overallData.summary || {};
+            
+            console.log(`📊 Summary data:`, summary);
+            
+            // Update stats cards - use direct assignment to avoid animation conflicts
+            const totalViolations = parseInt(summary.total_violations) || 0;
+            const laneViolations = parseInt(summary.lane_violations) || 0;
+            const helmetViolations = parseInt(summary.helmet_violations) || 0;
+            const redlightViolations = parseInt(summary.redlight_violations) || 0;
+            
+            // Stop any existing animations and update immediately
+            document.getElementById("totalViolations").textContent = totalViolations;
+            document.getElementById("laneViolations").textContent = laneViolations;
+            document.getElementById("helmetViolations").textContent = helmetViolations;
+            document.getElementById("redlightViolations").textContent = redlightViolations;
+            
+            // For "today" period, also update todayViolations
+            if (period === 'today') {
+              document.getElementById("todayViolations").textContent = totalViolations;
+            } else {
+              // For other periods, get today's data separately
+              const todayResp = await fetch('/api/stats/overall/today');
+              const todayData = await todayResp.json();
+              if (todayData.success) {
+                const todayTotal = parseInt(todayData.summary?.total_violations) || 0;
+                document.getElementById("todayViolations").textContent = todayTotal;
+              }
+            }
+            
+            // Update pie chart
+            if (pieChart) {
+              pieChart.data.datasets[0].data = [
+                parseInt(summary.lane_violations) || 0,
+                parseInt(summary.helmet_violations) || 0,
+                parseInt(summary.redlight_violations) || 0
+              ];
+              pieChart.update("none");
+            }
+            
+            // Update camera compare chart
+            if (cameraCompareChart && overallData.cameras) {
+              const cameraData = overallData.cameras;
+              const laneCamera = cameraData.find(c => c.camera_type === 'lane');
+              const helmetCamera = cameraData.find(c => c.camera_type === 'helmet');
+              const redlightCamera = cameraData.find(c => c.camera_type === 'red_light');
+              
+              cameraCompareChart.data.datasets[0].data = [
+                parseInt(laneCamera?.total) || 0,
+                parseInt(helmetCamera?.total) || 0,
+                parseInt(redlightCamera?.total) || 0
+              ];
+              cameraCompareChart.data.datasets[1].data = [
+                parseInt(summary.lane_violations) || 0,
+                parseInt(summary.helmet_violations) || 0,
+                parseInt(summary.redlight_violations) || 0
+              ];
+              cameraCompareChart.update("none");
+            }
+          }
+          
+          // Load trend data for charts based on period
+          if (period === 'today') {
+            // For today, load hourly data
+            const trendResp = await fetch(`/api/stats/trend/${period}`);
+            const trendData = await trendResp.json();
+            
+            if (trendData.success && trendData.data && hourlyChart) {
+              hourlyChart.data.datasets[0].data = trendData.data;
+              hourlyChart.update("none");
+            }
+          } else if (period === 'week') {
+            // For week, load 7-day trend
+            const weekResp = await fetch('/api/stats/week-trend');
+            const weekData = await weekResp.json();
+            
+            if (weekData.success && weekData.datasets) {
+              // Update simple line chart with total
+              if (simpleLineChart) {
+                const totalData = weekData.labels.map(
+                  (_, i) =>
+                    (weekData.datasets.lane[i] || 0) +
+                    (weekData.datasets.helmet[i] || 0) +
+                    (weekData.datasets.redlight[i] || 0)
+                );
+                simpleLineChart.data.labels = weekData.labels || [];
+                simpleLineChart.data.datasets[0].data = totalData;
+                simpleLineChart.update("none");
+              }
+              
+              // Update week trend chart
+              if (weekTrendChart) {
+                weekTrendChart.data.labels = weekData.labels || [];
+                weekTrendChart.data.datasets[0].data = weekData.datasets.lane || [];
+                weekTrendChart.data.datasets[1].data = weekData.datasets.helmet || [];
+                weekTrendChart.data.datasets[2].data = weekData.datasets.redlight || [];
+                weekTrendChart.update("none");
+              }
+            }
+          } else {
+            // For month, year, all - load trend data
+            const trendResp = await fetch(`/api/stats/trend/${period}`);
+            const trendData = await trendResp.json();
+            
+            if (trendData.success && trendData.data && simpleLineChart) {
+              simpleLineChart.data.labels = trendData.labels || [];
+              simpleLineChart.data.datasets[0].data = trendData.data;
+              simpleLineChart.update("none");
+            }
+            
+            // For all period, also load week trend
+            if (period === 'all') {
+              const weekResp = await fetch('/api/stats/week-trend');
+              const weekData = await weekResp.json();
+              
+              if (weekData.success && weekData.datasets && weekTrendChart) {
+                weekTrendChart.data.labels = weekData.labels || [];
+                weekTrendChart.data.datasets[0].data = weekData.datasets.lane || [];
+                weekTrendChart.data.datasets[1].data = weekData.datasets.helmet || [];
+                weekTrendChart.data.datasets[2].data = weekData.datasets.redlight || [];
+                weekTrendChart.update("none");
+              }
+            }
+          }
+          
+          console.log(`✅ Data loaded successfully for period: ${period}`);
+        } catch (error) {
+          console.error(`❌ Error loading data for period ${period}:`, error);
+          // Set default values on error
+          document.getElementById("totalViolations").textContent = "0";
+          document.getElementById("todayViolations").textContent = "0";
+          document.getElementById("laneViolations").textContent = "0";
+          document.getElementById("helmetViolations").textContent = "0";
+          document.getElementById("redlightViolations").textContent = "0";
+        } finally {
+          isLoadingData = false;
         }
       }
 
@@ -1540,7 +1577,8 @@
 
         initCharts();
         console.log("📊 Charts initialized, loading data...");
-        loadInitialData().then(() => {
+        // Load initial data with default filter (today)
+        loadData('today').then(() => {
           initComplete = true;
           window.scrollTo = originalScroll;
           window.scrollTo(0, 0); // Reset to top

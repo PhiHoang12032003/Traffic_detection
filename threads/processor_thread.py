@@ -1,7 +1,7 @@
 import threading
 from time import sleep
 import cv2
-
+import numpy as np
 
 from ultralytics import YOLO
 
@@ -78,10 +78,44 @@ class FrameProcessor(threading.Thread):
 
                     self.line = detect_line(frame, self.line, self.scale_factor)
                     batch_lines.append(self.line)
-                    #draw line only if the traffic light is red
+                    #draw rectangle only if the traffic light is red
                     if tl_color_str == "red":
                         x1, y1, x2, y2 = self.line
-                        cv2.line(frame, (x1,y1), (x2,y2), tl_color, 2)
+                        # Calculate rectangle thickness (height of rectangle)
+                        rectangle_thickness = int(40 * self.scale_factor)  # Độ dày hình chữ nhật
+                        
+                        # Get frame dimensions
+                        height, width = frame.shape[:2]
+                        
+                        # Calculate slope and intercept of the line
+                        if x2 != x1:
+                            slope = (y2 - y1) / (x2 - x1)
+                            intercept = y1 - slope * x1
+                        else:
+                            # Vertical line case
+                            slope = 0
+                            intercept = y1
+                        
+                        # Calculate y coordinates at left (x=0) and right (x=width) edges
+                        y_left = int(slope * 0 + intercept)
+                        y_right = int(slope * width + intercept)
+                        
+                        # Create 4 points for the diagonal rectangle
+                        # Top-left, top-right, bottom-right, bottom-left
+                        pts = np.array([
+                            [0, y_left],                    # Top-left
+                            [width, y_right],              # Top-right
+                            [width, y_right + rectangle_thickness],  # Bottom-right
+                            [0, y_left + rectangle_thickness]        # Bottom-left
+                        ], np.int32)
+                        
+                        # Draw filled rectangle (semi-transparent for better visibility)
+                        overlay = frame.copy()
+                        cv2.fillPoly(overlay, [pts], tl_color)
+                        cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
+                        
+                        # Draw rectangle border for better visibility (thicker border)
+                        cv2.polylines(frame, [pts], True, tl_color, 3)
 
                     cv2.rectangle(frame, (int(80*self.scale_factor), int(40*self.scale_factor)), (int(687*self.scale_factor), int(120*self.scale_factor)), (0, 0, 0), -1)
                     cv2.putText(frame, f" Traffic Light Status:", (int(100*self.scale_factor), int(100*self.scale_factor)), cv2.FONT_HERSHEY_SIMPLEX, 1,(255, 255, 255), 2)

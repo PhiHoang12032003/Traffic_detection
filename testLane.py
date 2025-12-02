@@ -192,8 +192,8 @@ if __name__ == '__main__':
             end_line_motor = (int(0.525 * w), int(0.8 * h))
             cv2.rectangle(frame, start_line_motor, end_line_motor, (255, 0, 255), 2) # Làn xe máy
 
-            start_line_car = (int(0.55 * w), int(0.2 * h))
-            end_line_car = (w, int(0.8 * h))
+            start_line_car = (int(0.48 * w), int(0.15 * h))
+            end_line_car = (w, int(0.75 * h))
             cv2.rectangle(frame, start_line_car, end_line_car, (0, 255, 0), 2) # Làn ô tô
 
             # --- Xử lý các đối tượng được phát hiện ---

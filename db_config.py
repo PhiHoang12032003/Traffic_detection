@@ -363,6 +363,79 @@ class StatisticsDatabase:
         query = "SELECT * FROM v_overall_stats"
         results = self.db.execute_query(query, fetch=True)
         return results
+    
+    def get_lane_stats_by_period(self, camera_id=1, start_date=None, end_date=None):
+        """Get lane violation statistics for a date range"""
+        query = """
+            SELECT violation_type, COUNT(*) as count
+            FROM lane_violations
+            WHERE camera_id = %s
+        """
+        params = [camera_id]
+        
+        if start_date and end_date:
+            query += " AND DATE(detected_at) BETWEEN %s AND %s"
+            params.extend([start_date, end_date])
+        elif start_date:
+            query += " AND DATE(detected_at) >= %s"
+            params.append(start_date)
+        elif end_date:
+            query += " AND DATE(detected_at) <= %s"
+            params.append(end_date)
+        
+        query += " GROUP BY violation_type"
+        
+        results = self.db.execute_query(query, tuple(params), fetch=True)
+        return results
+    
+    def get_helmet_stats_by_period(self, camera_id=2, start_date=None, end_date=None):
+        """Get helmet violation statistics for a date range"""
+        query = """
+            SELECT 
+                SUM(CASE WHEN has_helmet = FALSE THEN 1 ELSE 0 END) as no_helmet_count,
+                SUM(CASE WHEN has_helmet = TRUE THEN 1 ELSE 0 END) as with_helmet_count,
+                COUNT(*) as total_detections
+            FROM helmet_violations
+            WHERE camera_id = %s
+        """
+        params = [camera_id]
+        
+        if start_date and end_date:
+            query += " AND DATE(detected_at) BETWEEN %s AND %s"
+            params.extend([start_date, end_date])
+        elif start_date:
+            query += " AND DATE(detected_at) >= %s"
+            params.append(start_date)
+        elif end_date:
+            query += " AND DATE(detected_at) <= %s"
+            params.append(end_date)
+        
+        results = self.db.execute_query(query, tuple(params), fetch=True)
+        return results[0] if results else None
+    
+    def get_red_light_stats_by_period(self, camera_id=3, start_date=None, end_date=None):
+        """Get red light violation statistics for a date range"""
+        query = """
+            SELECT 
+                COUNT(*) as violation_count,
+                COUNT(DISTINCT license_plate) as unique_vehicles
+            FROM red_light_violations
+            WHERE camera_id = %s
+        """
+        params = [camera_id]
+        
+        if start_date and end_date:
+            query += " AND DATE(detected_at) BETWEEN %s AND %s"
+            params.extend([start_date, end_date])
+        elif start_date:
+            query += " AND DATE(detected_at) >= %s"
+            params.append(start_date)
+        elif end_date:
+            query += " AND DATE(detected_at) <= %s"
+            params.append(end_date)
+        
+        results = self.db.execute_query(query, tuple(params), fetch=True)
+        return results[0] if results else None
 
 
 # Helper function to get database instance

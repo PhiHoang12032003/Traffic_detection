@@ -16,9 +16,7 @@ from flask_cors import CORS
 
 # Import database modules
 from db_config import get_database_connection, VideoDatabase, ViolationDatabase, StatisticsDatabase
-# from flask_mysqldb import MySQL  # Commented out for easier setup
-# Note: testHelmetNew functions are replaced with processHelmetVideo functionality
-# from processHelmetVideo import process_helmet_video_complete  # Tạm comment để tránh lỗi reportlab
+
 import threading
 import uuid
 
@@ -30,14 +28,12 @@ except ImportError as e:
     print(f"⚠️ Gemini Chatbot not available: {e}")
     print("   Install: pip install google-generativeai python-dotenv")
     CHATBOT_AVAILABLE = False
-# Avoid wildcard import from testLane to prevent name collisions (e.g., datetime)
-# If needed, import explicitly: from testLane import some_function
-# from testLane import *
-# from testRedLight import video_detect_red_light  # Removed - using new red_light_main system
+
 from red_light_main import process_red_light_video_complete, generate_frames_red_light_new
 import createBB
 import createBB_lane  # Import module tạo PDF cho lane violation
 from utils.helmet_pdf_utils import create_helmet_pdf_report, get_helmet_violation_info
+from processHelmetVideo import process_helmet_video_complete  # Import function xử lý video bảo hiểm
 from werkzeug.utils import secure_filename
 import os
 
@@ -390,19 +386,19 @@ def video_detection_web(path_x=""):
             # Vẽ UI elements cơ bản cho mọi frame
             roi_start = (0, int(0.2 * h))
             roi_end = (w, int(0.8 * h))
-            cv2.rectangle(frame, roi_start, roi_end, (255, 0, 0), 2)
+            # Đã bỏ vẽ ROI xanh dương
             
-            # Làn xe máy: 0% - 50% width
-            start_line_motor = (0, int(0.2 * h))
-            end_line_motor = (int(0.50 * w), int(0.8 * h))
+            # Làn xe máy: 17% - 42% width (trong vùng video)
+            start_line_motor = (int(0.14 * w), int(0.15 * h))
+            end_line_motor = (int(0.42 * w), int(0.85 * h))
             cv2.rectangle(frame, start_line_motor, end_line_motor, (255, 0, 255), 2)
-            draw_text(frame, "LANE XE MAY", (10, int(0.25 * h)), text_color=(255, 255, 255), text_color_bg=(255, 0, 255))
+            draw_text(frame, "LANE XE MAY", (int(0.18 * w), int(0.18 * h)), text_color=(255, 255, 255), text_color_bg=(255, 0, 255))
             
-            # Làn ô tô: 50% - 100% width  
-            start_line_car = (int(0.50 * w), int(0.2 * h))
-            end_line_car = (w, int(0.8 * h))
+            # Làn ô tô: 42% - 88% width (trong vùng video)
+            start_line_car = (int(0.42 * w), int(0.15 * h))
+            end_line_car = (int(0.85 * w), int(0.85 * h))
             cv2.rectangle(frame, start_line_car, end_line_car, (0, 255, 0), 2)
-            draw_text(frame, "LANE O TO", (int(0.52 * w), int(0.25 * h)), text_color=(255, 255, 255), text_color_bg=(0, 255, 0))
+            draw_text(frame, "LANE O TO", (int(0.50 * w), int(0.18 * h)), text_color=(255, 255, 255), text_color_bg=(0, 255, 0))
             
             # If frame should be skipped, still write with basic UI (chỉ lanes, không có text thống kê)
             if not performance_config.should_process_frame(frame_count):
@@ -1315,6 +1311,10 @@ def generate_frames_helmet(path_x, video_id=None):
         else:
             print(f"✅ Loading helmet model from: {weights_path}")
             model = YOLO(weights_path)
+            # In thông tin model để debug
+            if hasattr(model, 'names'):
+                print(f"📊 Model classes: {model.names}")
+                print(f"   Class mapping (THỰC TẾ): 0=head (không mũ - VI PHẠM), 1=helmet (có mũ), 2=person (người)")
         
         # Optional vehicle model for license plate assist (motorbike focus)
         vehicle_model = None
@@ -1431,7 +1431,12 @@ def generate_frames_helmet(path_x, video_id=None):
         
         frame_number = 0
         
-        while cap.isOpened():  # ✅ LUÔN STREAM VIDEO
+        while cap.isOpened():  # ✅ STREAM VIDEO
+            # Kiểm tra nếu detection đã bị dừng
+            if not helmet_detection_active:
+                print("🛑 Helmet detection stopped, closing video...")
+                break
+            
             ret, frame = cap.read()
             if not ret:
                 break
@@ -1460,8 +1465,22 @@ def generate_frames_helmet(path_x, video_id=None):
                     except Exception as e:
                         print(f"⚠️ Failed to initialize video writer: {e}")
                 
-                # Run helmet detection
-                results = model(frame)
+                # Run helmet detection với tham số tối ưu (giống Colab)
+                # conf: confidence threshold (0.25 theo Colab)
+                # imgsz: image size 800 (theo Colab - model được train với imgsz=800)
+                # classes: chỉ detect class 0 (head) và class 1 (helmet), bỏ class 2 (person)
+                results = model(frame, 
+                              conf=0.25,  # Confidence threshold theo Colab
+                              imgsz=800,  # Image size 800 - GIỐNG COLAB để nhận diện chính xác
+                              classes=[0, 1],  # Chỉ detect class 0 (head) và 1 (helmet), bỏ class 2 (person)
+                              verbose=False)  # Không in log chi tiết
+                
+                # SỬ DỤNG PLOT() MẶC ĐỊNH CỦA YOLO GIỐNG COLAB - KHÔNG VẼ THỦ CÔNG
+                # YOLO plot() sẽ tự động vẽ boxes với màu sắc và labels phù hợp
+                if results and len(results) > 0:
+                    # Dùng plot() mặc định của YOLO - giống Colab
+                    annotated_frame = results[0].plot(conf=True, labels=True, boxes=True)
+                    frame = annotated_frame
                 
                 # QUAN TRỌNG: Cleanup frame detections và state map mỗi 50 frames
                 if frame_number % 50 == 0:
@@ -1514,8 +1533,8 @@ def generate_frames_helmet(path_x, video_id=None):
                         continue
 
                     # First pass: collect detections with normalized labels
-                    # MODEL HELMET V2 CLASSES: 0=Helmet, 1=Without Helmet, 2=Rider, 3=Number Plate
-                    dets = []  # {type: 'with_helmet'|'no_helmet'|'rider'|'plate'|'other', bbox, conf, cls}
+                    # MODEL HELMET V2 CLASSES (THỰC TẾ): 0=head (không mũ - VI PHẠM), 1=helmet (có mũ), 2=person (người)
+                    dets = []  # {type: 'no_helmet'|'with_helmet'|'person'|'other', bbox, conf, cls}
                     names = getattr(r, 'names', {}) or {}
                     
                     for box in boxes:
@@ -1537,64 +1556,59 @@ def generate_frames_helmet(path_x, video_id=None):
                         h = max(0, y2 - y1)
                         area = w * h
                         
-                        # MAPPING THEO CLASS ID của model_helmet_v2
+                        # MAPPING THEO CLASS ID THỰC TẾ của model_helmet_v2
                         if cls == 0:
-                            det_type = 'with_helmet'
+                            det_type = 'no_helmet'  # head = không mũ = VI PHẠM
                         elif cls == 1:
-                            det_type = 'no_helmet'
+                            det_type = 'with_helmet'  # helmet = có mũ
                         elif cls == 2:
-                            det_type = 'rider'
-                        elif cls == 3:
-                            det_type = 'plate'
+                            det_type = 'person'  # person = người lái
                         else:
                             det_type = 'other'
 
-                        # Class-specific confidence and area gates to reduce false 'no helmet'
-                        min_area_with = 800   # Giảm xuống để nhận diện helmet dễ hơn
-                        min_area_no = 1200     # Giữ nguyên để tránh false positive
+                        # Class-specific confidence and area gates
+                        min_area_head = 1200     # head cần area lớn hơn để tránh false positive
+                        min_area_helmet = 800   # helmet có thể nhỏ hơn
                         
                         # THÊM: Kiểm tra aspect ratio để loại bỏ detection không hợp lý
                         aspect_ratio = w / h if h > 0 else 0
                         
-                        if det_type == 'no_helmet':
-                            # YÊU CẦU CAO cho no_helmet để giảm false positive
-                            if conf < 0.55 or area < min_area_no:
+                        if det_type == 'no_helmet':  # cls == 0 (head)
+                            # CÂN BẰNG: Giảm threshold để phản ứng nhanh hơn, nhưng vẫn đảm bảo chất lượng
+                            if conf < 0.45 or area < min_area_head:  # Giảm từ 0.55 xuống 0.45
                                 continue
-                            # Kiểm tra aspect ratio hợp lý cho người (0.3 - 3.0)
-                            if aspect_ratio < 0.3 or aspect_ratio > 3.0:
+                            # Kiểm tra aspect ratio hợp lý cho đầu người (0.5 - 2.0)
+                            if aspect_ratio < 0.5 or aspect_ratio > 2.0:
                                 continue
-                        elif det_type == 'with_helmet':
-                            # YÊU CẦU THẤP HƠN cho with_helmet để nhận diện dễ hơn
-                            if conf < 0.35 or area < min_area_with:
+                        elif det_type == 'with_helmet':  # cls == 1 (helmet)
+                            # TĂNG THRESHOLD: Tăng lên để cân bằng với no_helmet
+                            if conf < 0.40 or area < min_area_helmet:  # Tăng từ 0.35 lên 0.40
                                 continue
                             # Aspect ratio cho helmet (0.4 - 2.5)
                             if aspect_ratio < 0.4 or aspect_ratio > 2.5:
                                 continue
-                        elif det_type == 'rider':
-                            # BỎ QUA rider detection - không cần vẽ
+                        elif det_type == 'person':  # cls == 2
+                            # BỎ QUA person detection - không cần vẽ
                             continue
-                        elif det_type == 'plate':
-                            # Giữ plate detection với threshold thấp
-                            if conf < 0.25:
-                                continue
                         else:
                             if conf < 0.3:
                                 continue
 
                         dets.append({'type': det_type, 'bbox': (x1, y1, x2, y2), 'conf': conf, 'cls': cls})
 
-                    # Conflict resolution: if with_helmet overlaps with no_helmet, prefer with_helmet
-                    # TĂNG CƯỜNG: Ưu tiên with_helmet mạnh hơn để giảm false alarm
+                    # Conflict resolution: chỉ suppress khi with_helmet có confidence cao hơn RÕ RÀNG
+                    # CẢI THIỆN: Chỉ suppress no_helmet khi with_helmet có confidence cao hơn ít nhất 0.2
                     suppressed_no = set()
                     for i, d_with in enumerate(d for d in dets if d['type'] == 'with_helmet'):
                         for j, d_no in enumerate(d for d in dets if d['type'] == 'no_helmet'):
                             iou = _iou(d_with['bbox'], d_no['bbox'])
-                            if iou > 0.4:  # Giảm từ 0.5 xuống 0.4 để suppress nhiều hơn
-                                # Suppress 'no_helmet' nếu overlap và confidence with_helmet không quá thấp
-                                if d_no['conf'] <= d_with['conf'] + 0.15:  # Tăng từ 0.1 lên 0.15
+                            if iou > 0.5:  # Tăng lại lên 0.5 để chỉ suppress khi overlap nhiều
+                                # Chỉ suppress 'no_helmet' nếu 'with_helmet' có confidence CAO HƠN RÕ RÀNG (ít nhất 0.2)
+                                if d_with['conf'] > d_no['conf'] + 0.2:  # Yêu cầu chênh lệch lớn hơn
                                     # Find absolute index of this no_helmet det to mark suppressed
                                     idx = [k for k, dd in enumerate(dets) if dd is d_no][0]
                                     suppressed_no.add(idx)
+                                    print(f"🔀 [CONFLICT] Suppressed no_helmet (conf={d_no['conf']:.2f}) by with_helmet (conf={d_with['conf']:.2f}) | IoU={iou:.2f}")
 
                     # Same-type de-duplication (NMS-style) to avoid multiple boxes for one person
                     def _dedup_type_indices(det_type: str, iou_thresh: float = 0.6):
@@ -1679,10 +1693,12 @@ def generate_frames_helmet(path_x, video_id=None):
                             with_votes_last3 = sum(1 for v in last3 if v == 'with')
                             with_votes_last4 = sum(1 for v in last4 if v == 'with')
                             if det_type == 'no_helmet':
-                                # TĂNG YÊU CẦU CAO HƠN: Need >=5 'no' trong last 6 và KHÔNG CÓ 'with' trong last 4
-                                if len(wdw) < 6 or no_votes < 5 or with_votes_last4 > 0:  # Không cho phép 'with' trong 4 frames gần nhất
+                                # GIẢM YÊU CẦU: Chỉ cần >=3 'no' trong last 5 và KHÔNG CÓ 'with' trong last 2 frames
+                                no_votes_last5 = sum(1 for v in wdw[-5:] if v == 'no') if len(wdw) >= 5 else no_votes
+                                with_votes_last2 = sum(1 for v in wdw[-2:] if v == 'with') if len(wdw) >= 2 else 0
+                                if len(wdw) < 3 or no_votes_last5 < 3 or with_votes_last2 > 0:  # Giảm yêu cầu để phản ứng nhanh hơn
                                     can_count = False
-                                    skip_reason = 'VOTE_INSUFFICIENT'
+                                    skip_reason = f'VOTE_INSUFFICIENT(no={no_votes_last5}/5, with={with_votes_last2}/2)'
 
                             # State machine with hysteresis per position
                             state_rec = helmet_detection_data.get('state_map', {}).get(position_key)
@@ -1708,13 +1724,15 @@ def generate_frames_helmet(path_x, video_id=None):
                             with4 = sum(1 for v in wdw_state[-4:] if v == 'with')
                             
                             if cur_state in ('unknown', 'with'):
-                                # TĂNG YÊU CẦU MẠNH chuyển sang 'no': cần ít nhất 5 'no' trong 6 frames và KHÔNG CÓ 'with' trong 4 frames gần nhất
-                                if no6 >= 5 and with4 == 0:  # Mở rộng từ 3 frames lên 4 frames
+                                # GIẢM YÊU CẦU: Chỉ cần ít nhất 3 'no' trong 4 frames và KHÔNG CÓ 'with' trong 2 frames gần nhất
+                                no4 = sum(1 for v in wdw_state[-4:] if v == 'no') if len(wdw_state) >= 4 else no6
+                                with2 = sum(1 for v in wdw_state[-2:] if v == 'with') if len(wdw_state) >= 2 else with4
+                                if no4 >= 3 and with2 == 0:  # Giảm yêu cầu để phản ứng nhanh hơn
                                     # Transition to 'no'
                                     state_rec['state'] = 'no'
                                     state_rec['last_change'] = frame_number
-                                    state_rec['lock_until'] = frame_number + 300  # Tăng lock từ 220 lên 300 frames (~10 giây)
-                                    print(f"🔄 [STATE] {position_key}: 'with' → 'no' | F{frame_number} | Lock until {state_rec['lock_until']}")
+                                    state_rec['lock_until'] = frame_number + 200  # Giảm lock xuống 200 frames (~8 giây)
+                                    print(f"🔄 [STATE] {position_key}: 'with' → 'no' | F{frame_number} | no4={no4}, with2={with2} | Lock until {state_rec['lock_until']}")
                             elif cur_state == 'no':
                                 # KHÓ CHUYỂN VỀ 'with': Cần bằng chứng RẤT MẠNH và sau khi hết lock
                                 if frame_number >= state_rec.get('lock_until', -1):
@@ -1741,25 +1759,18 @@ def generate_frames_helmet(path_x, video_id=None):
                                 skip_reason = "SUPPRESSED_BY_HELMET"
                                 continue
                             
-                            # LUÔN VẼ BOUNDING BOX ĐỎ khi detect "no_helmet"
+                            # KHÔNG VẼ THỦ CÔNG - ĐÃ DÙNG plot() Ở TRÊN
+                            # Chỉ đếm để tracking
                             if position_key not in counted_keys:
-                                # Vẽ box đỏ dày để nổi bật
-                                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
-                                
-                                # Vẽ label với background
-                                label = f"KHONG MU: {conf:.2f}"
-                                (text_w, text_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
-                                label_y = max(text_h + 10, y1)  # Đảm bảo không bị cắt
-                                cv2.rectangle(frame, (x1, label_y - text_h - 10), (x1 + text_w, label_y), (0, 0, 255), -1)
-                                cv2.putText(frame, label, (x1, label_y - 5),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                                
                                 frame_without += 1
                                 counted_keys.add(position_key)
                             
-                            # KIỂM TRA ĐIỀU KIỆN ĐỂ COUNT vi phạm vào database (khắt khe hơn)
+                            # KIỂM TRA ĐIỀU KIỆN ĐỂ COUNT vi phạm vào database (giảm yêu cầu để phản ứng nhanh hơn)
                             state_ok = helmet_detection_data['state_map'].get(position_key, {}).get('state') == 'no'
-                            votes_ok = (no_votes >= 5 and with_votes_last4 == 0)  # 5/6 frames 'no' và 0 'with' trong 4 frames
+                            # Giảm yêu cầu: chỉ cần 3/5 frames 'no' và 0 'with' trong 2 frames
+                            no_votes_last5 = sum(1 for v in wdw[-5:] if v == 'no') if len(wdw) >= 5 else no_votes
+                            with_votes_last2 = sum(1 for v in wdw[-2:] if v == 'with') if len(wdw) >= 2 else with_votes_last4
+                            votes_ok = (no_votes_last5 >= 3 and with_votes_last2 == 0)  # Giảm yêu cầu
                             lock_active = frame_number < helmet_detection_data['state_map'].get(position_key, {}).get('lock_until', -1)
                             
                             # Chỉ COUNT khi đủ điều kiện (nhưng VẪN VẼ bbox ở trên)
@@ -2057,18 +2068,9 @@ def generate_frames_helmet(path_x, video_id=None):
                                 if frame_number % 30 == 0:
                                     print(f"⏭️ [KHÔNG MŨ SKIP] F{frame_number} | G({grid_x},{grid_y}) | {skip_reason}")
                         elif det_type == 'with_helmet':
-                            # draw green once per position_key for visible count
+                            # KHÔNG VẼ THỦ CÔNG - ĐÃ DÙNG plot() Ở TRÊN
+                            # Chỉ đếm để tracking
                             if position_key not in counted_keys:
-                                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
-                                
-                                # Vẽ label với background
-                                label = f"CO MU: {conf:.2f}"
-                                (text_w, text_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
-                                label_y = max(text_h + 10, y1)
-                                cv2.rectangle(frame, (x1, label_y - text_h - 10), (x1 + text_w, label_y), (0, 255, 0), -1)
-                                cv2.putText(frame, label, (x1, label_y - 5),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
-                                
                                 frame_with += 1
                                 counted_keys.add(position_key)
                             if can_count:
@@ -2083,43 +2085,9 @@ def generate_frames_helmet(path_x, video_id=None):
                                 if frame_number % 30 == 0:
                                     print(f"⏭️ [CÓ MŨ SKIP] F{frame_number} | G({grid_x},{grid_y}) | {skip_reason}")
                 
-                        elif det_type == 'rider':
-                            # BỎ VẼ BOUNDING BOX CHO RIDER - model_helmet_v2 class 2
+                        elif det_type == 'person':
+                            # BỎ VẼ BOUNDING BOX CHO PERSON - model_helmet_v2 class 2
                             pass
-                        elif det_type == 'plate':
-                            # Luôn vẽ bounding box cho biển số xe (màu tím) - model_helmet_v2 class 3
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 3)
-                            
-                            # OCR attempt
-                            plate_text = "BIEN SO"  # Text mặc định
-                            if reader is not None:
-                                try:
-                                    plate_crop = frame[y1:y2, x1:x2]
-                                    if plate_crop.size > 0 and plate_crop.shape[0] >= 10 and plate_crop.shape[1] >= 20:
-                                        gray_plate = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2GRAY)
-                                        _, thresh_plate = cv2.threshold(gray_plate, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                                        ocr_results = reader.readtext(thresh_plate)
-                                        if ocr_results:
-                                            best_text = ""
-                                            best_confidence = 0
-                                            for (bbox, text, prob) in ocr_results:
-                                                if prob > best_confidence:
-                                                    best_confidence = prob
-                                                    best_text = text.strip().replace(" ", "").upper()
-                                            if best_text and len(best_text) >= 3:
-                                                plate_text = best_text
-                                                if lp_text is None:
-                                                    lp_text = plate_text
-                                except Exception as e:
-                                    pass  # Silent fail
-                            
-                            # Vẽ label với background
-                            label = f"{plate_text}"
-                            (text_w, text_h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
-                            label_y = max(text_h + 10, y1)
-                            cv2.rectangle(frame, (x1, label_y - text_h - 10), (x1 + text_w, label_y), (255, 0, 255), -1)
-                            cv2.putText(frame, label, (x1, label_y - 5),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
                 # Optional: vehicle-based license plate extraction every few frames
                 try:
@@ -2177,30 +2145,21 @@ def generate_frames_helmet(path_x, video_id=None):
                     if frame_number % 60 == 0:
                         print(f"⚠️ Plate extraction error: {e}")
                 
-                # After processing detections: ensure stable rendering using state_map and recency
+                # KHÔNG VẼ THỦ CÔNG - ĐÃ DÙNG plot() Ở TRÊN
+                # Chỉ đếm stable states để tracking
                 try:
                     smap = helmet_detection_data.get('state_map', {})
                     recent_limit = 8  # frames to keep state visible
                     stable_keys = [k for k, m in smap.items() if m.get('state') in ('no', 'with') and (frame_number - m.get('last_frame', -1) <= recent_limit)]
-                    # Draw for stable keys not already drawn this frame (using last_bbox)
+                    # Chỉ đếm, không vẽ (đã vẽ bằng plot())
                     for k in stable_keys:
                         if k in counted_keys:
                             continue
                         m = smap[k]
-                        bbox = m.get('last_bbox')
-                        if not bbox:
-                            continue
-                        x1, y1, x2, y2 = bbox
                         if m.get('state') == 'no':
-                            color = (0, 0, 255)
-                            label = 'KHONG MU'
                             frame_without += 1
                         else:
-                            color = (0, 255, 0)
-                            label = 'CO MU'
                             frame_with += 1
-                        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                        cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
                         counted_keys.add(k)
                 except Exception:
                     pass
@@ -2254,14 +2213,32 @@ def generate_frames_helmet(path_x, video_id=None):
             ret, buffer = cv2.imencode('.jpg', frame)
             if ret:
                 frame_bytes = buffer.tobytes()
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
         
-        cap.release()
+        # Đảm bảo cap được đóng
+        if cap is not None:
+            try:
+                cap.release()
+                print("✅ VideoCapture released in generate_frames_helmet")
+            except Exception as e:
+                print(f"⚠️ Error releasing VideoCapture: {e}")
+        
         cv2.destroyAllWindows()
         
     except Exception as e:
         print(f"Error in generate_frames_helmet: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Đảm bảo cap được đóng ngay cả khi có lỗi
+        if 'cap' in locals() and cap is not None:
+            try:
+                cap.release()
+                print("✅ VideoCapture released in exception handler")
+            except:
+                pass
+        
         # Return a simple error frame
         error_frame = np.zeros((480, 640, 3), dtype=np.uint8)
         cv2.putText(error_frame, "Error loading video", (50, 240), 
@@ -2673,13 +2650,11 @@ def process_helmet_now():
         
         # Process the video using selected detection method
         use_advanced = pending.get('use_advanced', False)
-        # result_path, stats = process_helmet_video_complete(  # Tạm comment để tránh lỗi reportlab
-        #     pending['input'], 
-        #     pending['output'],
-        #     use_improved_detection=use_advanced
-        # )
-        result_path = "temp_helmet_output.mp4"  # Tạm thời
-        stats = {"violations": 0, "total_frames": 0}  # Tạm thời
+        result_path, stats = process_helmet_video_complete(
+            pending['input'], 
+            pending['output'],
+            use_improved_detection=use_advanced
+        )
         
         print(f"✅ Helmet video processing completed! Output: {result_path}")
         
@@ -2927,6 +2902,81 @@ def get_lane_detection_status():
         'db_available': violation_db is not None
     }
     
+    # ✅ Lấy danh sách vi phạm gần đây (10 vi phạm mới nhất)
+    recent_violations = []
+    if violation_db:
+        try:
+            camera_id = 1  # Camera 1 = Lane
+            query = """
+                SELECT 
+                    violation_id,
+                    frame_number,
+                    time_in_video,
+                    violation_type,
+                    vehicle_type,
+                    confidence,
+                    detected_at,
+                    TIME(detected_at) as time_formatted,
+                    DATE(detected_at) as violation_date
+                FROM lane_violations
+                WHERE camera_id = %s
+                ORDER BY detected_at DESC
+                LIMIT 10
+            """
+            print(f"🔍 Debug: Querying lane_violations for camera_id={camera_id}")
+            results = violation_db.db.execute_query(query, (camera_id,), fetch=True)
+            
+            if results:
+                print(f"✅ Found {len(results)} lane violations from database")
+                for row in results:
+                    # Format time_formatted properly (TIME() returns timedelta)
+                    time_str = ''
+                    if row.get('time_formatted'):
+                        if isinstance(row['time_formatted'], datetime.timedelta):
+                            total_seconds = int(row['time_formatted'].total_seconds())
+                            hours = total_seconds // 3600
+                            minutes = (total_seconds % 3600) // 60
+                            seconds = total_seconds % 60
+                            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                        else:
+                            time_str = str(row['time_formatted'])
+                    
+                    # Format violation date
+                    date_str = ''
+                    if row.get('violation_date'):
+                        if isinstance(row['violation_date'], datetime.date):
+                            date_str = row['violation_date'].strftime('%d/%m/%Y')
+                        else:
+                            date_str = str(row['violation_date'])
+                    
+                    # Format violation type text
+                    violation_type_text = ''
+                    if row.get('violation_type') == 'motor_in_car_lane':
+                        violation_type_text = 'Xe máy vi phạm làn ô tô'
+                    elif row.get('violation_type') == 'car_in_motor_lane':
+                        violation_type_text = 'Ô tô vi phạm làn xe máy'
+                    else:
+                        violation_type_text = row.get('violation_type', 'Unknown')
+                    
+                    recent_violations.append({
+                        'violation_id': row['violation_id'],
+                        'frame_number': row['frame_number'],
+                        'time_in_video': float(row['time_in_video']) if row['time_in_video'] else 0,
+                        'violation_type': row['violation_type'],
+                        'violation_type_text': violation_type_text,
+                        'vehicle_type': row.get('vehicle_type', 'Unknown'),
+                        'confidence': float(row['confidence']) if row['confidence'] else 0,
+                        'detected_at': row['detected_at'].isoformat() if row['detected_at'] else '',
+                        'time_formatted': time_str,
+                        'date_formatted': date_str
+                    })
+            else:
+                print(f"⚠️ No lane violations found in database")
+        except Exception as e:
+            print(f"⚠️ Error fetching recent lane violations: {e}")
+            import traceback
+            traceback.print_exc()
+    
     return jsonify({
         'active': lane_detection_active,
         'motor_violations': motor_violations_db,
@@ -2935,7 +2985,8 @@ def get_lane_detection_status():
         'runtime': runtime_seconds,
         'runtime_formatted': f"{int(runtime_seconds//3600):02d}:{int((runtime_seconds%3600)//60):02d}:{int(runtime_seconds%60):02d}",
         'debug': debug_info,
-        'last_updated': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        'last_updated': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'recent_violations': recent_violations
     })
 
 
@@ -3502,6 +3553,69 @@ def get_helmet_detection_status():
     cur_total = helmet_detection_data.get('current_total', 0) if helmet_detection_active else 0
     cur_rate = round((cur_without / cur_total) * 100, 1) if cur_total > 0 else 0
 
+    # ✅ Lấy danh sách vi phạm gần đây (10 vi phạm mới nhất - chỉ vi phạm không đội mũ)
+    recent_violations = []
+    if violation_db:
+        try:
+            camera_id = 2  # Camera 2 = Helmet
+            query = """
+                SELECT 
+                    violation_id,
+                    frame_number,
+                    time_in_video,
+                    license_plate,
+                    confidence,
+                    detected_at,
+                    TIME(detected_at) as time_formatted,
+                    DATE(detected_at) as violation_date
+                FROM helmet_violations
+                WHERE camera_id = %s AND has_helmet = FALSE
+                ORDER BY detected_at DESC
+                LIMIT 10
+            """
+            print(f"🔍 Debug: Querying helmet_violations for camera_id={camera_id}")
+            results = violation_db.db.execute_query(query, (camera_id,), fetch=True)
+            
+            if results:
+                print(f"✅ Found {len(results)} helmet violations from database")
+                for row in results:
+                    # Format time_formatted properly (TIME() returns timedelta)
+                    time_str = ''
+                    if row.get('time_formatted'):
+                        if isinstance(row['time_formatted'], datetime.timedelta):
+                            total_seconds = int(row['time_formatted'].total_seconds())
+                            hours = total_seconds // 3600
+                            minutes = (total_seconds % 3600) // 60
+                            seconds = total_seconds % 60
+                            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                        else:
+                            time_str = str(row['time_formatted'])
+                    
+                    # Format violation date
+                    date_str = ''
+                    if row.get('violation_date'):
+                        if isinstance(row['violation_date'], datetime.date):
+                            date_str = row['violation_date'].strftime('%d/%m/%Y')
+                        else:
+                            date_str = str(row['violation_date'])
+                    
+                    recent_violations.append({
+                        'violation_id': row['violation_id'],
+                        'frame_number': row['frame_number'],
+                        'time_in_video': float(row['time_in_video']) if row['time_in_video'] else 0,
+                        'license_plate': row['license_plate'] or '',
+                        'confidence': float(row['confidence']) if row['confidence'] else 0,
+                        'detected_at': row['detected_at'].isoformat() if row['detected_at'] else '',
+                        'time_formatted': time_str,
+                        'date_formatted': date_str
+                    })
+            else:
+                print(f"⚠️ No helmet violations found in database")
+        except Exception as e:
+            print(f"⚠️ Error fetching recent helmet violations: {e}")
+            import traceback
+            traceback.print_exc()
+
     response_data = {
         'active': helmet_detection_active,
         # Cumulative (từ database hoặc session nếu đang chạy)
@@ -3519,10 +3633,11 @@ def get_helmet_detection_status():
         'runtime': runtime_seconds,
         'runtime_formatted': f"{int(runtime_seconds//3600):02d}:{int((runtime_seconds%3600)//60):02d}:{int(runtime_seconds%60):02d}",
         'last_updated': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        'source': 'database' if not helmet_detection_active else 'realtime'
+        'source': 'database' if not helmet_detection_active else 'realtime',
+        'recent_violations': recent_violations
     }
     
-    print(f"📤 [RESPONSE] Sending helmet stats: total_violations={response_data['total_violations']}, source={response_data['source']}")
+    print(f"📤 [RESPONSE] Sending helmet stats: total_violations={response_data['total_violations']}, source={response_data['source']}, recent_violations={len(recent_violations)}")
     return jsonify(response_data)
 
 
@@ -3956,37 +4071,157 @@ def generate_frames_red_light_advanced(path_x):
 # Clear uploaded video
 @app.route("/clear_upload", methods=['POST'])
 def clear_upload():
-    if 'uploaded_video' in session:
-        # Delete file if exists
-        filepath = session['uploaded_video']
-        if os.path.exists(filepath):
-            os.remove(filepath)
-        session.pop('uploaded_video', None)
-    return jsonify({'success': True})
+    try:
+        if 'uploaded_video' in session:
+            filepath = session['uploaded_video']
+            
+            # Thử xóa file với retry logic
+            if os.path.exists(filepath):
+                max_retries = 3
+                retry_delay = 0.5
+                
+                for attempt in range(max_retries):
+                    try:
+                        os.remove(filepath)
+                        print(f"✅ Deleted video file: {filepath}")
+                        break
+                    except PermissionError as e:
+                        if attempt < max_retries - 1:
+                            print(f"⚠️ File in use, retrying in {retry_delay}s... (attempt {attempt + 1}/{max_retries})")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2
+                        else:
+                            print(f"⚠️ Could not delete file (still in use): {filepath}")
+                    except Exception as e:
+                        print(f"⚠️ Error deleting file: {e}")
+                        break
+            
+            session.pop('uploaded_video', None)
+            session.pop('uploaded_video_id', None)
+        
+        return jsonify({'success': True, 'message': 'Upload cleared successfully'})
+    except Exception as e:
+        print(f"❌ Error in clear_upload: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # Clear uploaded video for helmet detection
 @app.route("/clear_upload_helmet", methods=['POST'])
 def clear_upload_helmet():
-    if 'uploaded_video_helmet' in session:
-        # Delete file if exists
-        filepath = session['uploaded_video_helmet']
-        if os.path.exists(filepath):
-            os.remove(filepath)
-        session.pop('uploaded_video_helmet', None)
-    return jsonify({'success': True})
+    global helmet_detection_active, helmet_detection_data
+    
+    try:
+        # Dừng helmet detection nếu đang chạy
+        if helmet_detection_active:
+            helmet_detection_active = False
+            print("🛑 Stopping helmet detection before clearing upload...")
+            
+            # Đóng video writer nếu đang mở
+            if helmet_detection_data.get('video_writer'):
+                try:
+                    helmet_detection_data['video_writer'].release()
+                    helmet_detection_data['video_writer'] = None
+                    print("✅ Video writer released")
+                except Exception as e:
+                    print(f"⚠️ Error releasing video writer: {e}")
+            
+            # Đợi một chút để đảm bảo VideoCapture đã đóng
+            time.sleep(0.5)
+        
+        if 'uploaded_video_helmet' in session:
+            filepath = session['uploaded_video_helmet']
+            
+            # Thử xóa file với retry logic
+            if os.path.exists(filepath):
+                max_retries = 3
+                retry_delay = 0.5
+                
+                for attempt in range(max_retries):
+                    try:
+                        os.remove(filepath)
+                        print(f"✅ Deleted helmet video file: {filepath}")
+                        break
+                    except PermissionError as e:
+                        if attempt < max_retries - 1:
+                            print(f"⚠️ File in use, retrying in {retry_delay}s... (attempt {attempt + 1}/{max_retries})")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff
+                        else:
+                            print(f"⚠️ Could not delete file (still in use): {filepath}")
+                            print(f"   Error: {e}")
+                            # Đánh dấu để xóa sau (deferred deletion)
+                            # File sẽ được xóa khi process kết thúc hoặc khi VideoCapture đóng
+                    except Exception as e:
+                        print(f"⚠️ Error deleting file: {e}")
+                        break
+            
+            session.pop('uploaded_video_helmet', None)
+            session.pop('uploaded_video_helmet_id', None)
+        
+        return jsonify({'success': True, 'message': 'Upload cleared successfully'})
+    except Exception as e:
+        print(f"❌ Error in clear_upload_helmet: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # Clear uploaded video for lane detection
 @app.route("/clear_upload_lane", methods=['POST'])
 def clear_upload_lane():
-    if 'uploaded_video_lane' in session:
-        # Delete file if exists
-        filepath = session['uploaded_video_lane']
-        if os.path.exists(filepath):
-            os.remove(filepath)
-        session.pop('uploaded_video_lane', None)
-    return jsonify({'success': True})
+    global lane_detection_active, lane_detection_data
+    
+    try:
+        # Dừng lane detection nếu đang chạy
+        if lane_detection_active:
+            lane_detection_active = False
+            print("🛑 Stopping lane detection before clearing upload...")
+            
+            # Đóng video writer nếu đang mở
+            if lane_detection_data.get('video_writer'):
+                try:
+                    lane_detection_data['video_writer'].release()
+                    lane_detection_data['video_writer'] = None
+                    print("✅ Video writer released")
+                except Exception as e:
+                    print(f"⚠️ Error releasing video writer: {e}")
+            
+            # Đợi một chút để đảm bảo VideoCapture đã đóng
+            time.sleep(0.5)
+        
+        if 'uploaded_video_lane' in session:
+            filepath = session['uploaded_video_lane']
+            
+            # Thử xóa file với retry logic
+            if os.path.exists(filepath):
+                max_retries = 3
+                retry_delay = 0.5
+                
+                for attempt in range(max_retries):
+                    try:
+                        os.remove(filepath)
+                        print(f"✅ Deleted lane video file: {filepath}")
+                        break
+                    except PermissionError as e:
+                        if attempt < max_retries - 1:
+                            print(f"⚠️ File in use, retrying in {retry_delay}s... (attempt {attempt + 1}/{max_retries})")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2
+                        else:
+                            print(f"⚠️ Could not delete file (still in use): {filepath}")
+                    except Exception as e:
+                        print(f"⚠️ Error deleting file: {e}")
+                        break
+            
+            session.pop('uploaded_video_lane', None)
+            session.pop('current_video_id_lane', None)
+        
+        return jsonify({'success': True, 'message': 'Upload cleared successfully'})
+    except Exception as e:
+        print(f"❌ Error in clear_upload_lane: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # API endpoint for helmet violation statistics
@@ -4343,6 +4578,141 @@ def get_overall_stats_api():
     })
 
 
+@app.route('/api/stats/overall/<period>')
+def get_overall_stats_by_period_api(period):
+    """Get overall statistics filtered by time period"""
+    try:
+        if not stats_db:
+            return jsonify({
+                'success': False,
+                'error': 'Database not available'
+            }), 503
+        
+        today = datetime.date.today()
+        start_date = None
+        end_date = today
+        
+        # Calculate date range based on period
+        if period == 'today':
+            start_date = today
+            end_date = today
+        elif period == 'week':
+            start_date = today - datetime.timedelta(days=7)
+        elif period == 'month':
+            start_date = today - datetime.timedelta(days=30)
+        elif period == 'year':
+            start_date = datetime.date(today.year, 1, 1)
+        elif period == 'all':
+            start_date = None
+            end_date = None
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid period: {period}'
+            }), 400
+        
+        overall_stats = stats_db.get_overall_stats()
+        detailed_stats = []
+        total_violations = 0
+        
+        for camera in overall_stats:
+            camera_id = camera['camera_id']
+            camera_type = camera['camera_type']
+            
+            if camera_type == 'lane':
+                if period == 'today' or (start_date and end_date and start_date == end_date):
+                    # Single date - use existing method
+                    lane_stats = stats_db.get_lane_stats(camera_id, date=start_date)
+                else:
+                    # Date range - use new method
+                    lane_stats = stats_db.get_lane_stats_by_period(camera_id, start_date, end_date)
+                
+                motor_count = sum(s['count'] for s in lane_stats if s['violation_type'] == 'motor_in_car_lane')
+                car_count = sum(s['count'] for s in lane_stats if s['violation_type'] == 'car_in_motor_lane')
+                total = motor_count + car_count
+                
+                detailed_stats.append({
+                    'camera_id': camera_id,
+                    'camera_name': camera['camera_name'],
+                    'camera_type': camera_type,
+                    'total': total,
+                    'breakdown': {
+                        'motor_violations': motor_count,
+                        'car_violations': car_count
+                    }
+                })
+                total_violations += total
+                
+            elif camera_type == 'helmet':
+                if period == 'today' or (start_date and end_date and start_date == end_date):
+                    # Single date - use existing method
+                    helmet_stats = stats_db.get_helmet_stats(camera_id, date=start_date)
+                else:
+                    # Date range - use new method
+                    helmet_stats = stats_db.get_helmet_stats_by_period(camera_id, start_date, end_date)
+                
+                no_helmet = helmet_stats['no_helmet_count'] if helmet_stats and helmet_stats.get('no_helmet_count') is not None else 0
+                
+                detailed_stats.append({
+                    'camera_id': camera_id,
+                    'camera_name': camera['camera_name'],
+                    'camera_type': camera_type,
+                    'total': no_helmet or 0,
+                    'breakdown': {
+                        'no_helmet': no_helmet or 0
+                    }
+                })
+                total_violations += (no_helmet or 0)
+                
+            elif camera_type == 'red_light':
+                if period == 'today' or (start_date and end_date and start_date == end_date):
+                    # Single date - use existing method
+                    redlight_stats = stats_db.get_red_light_stats(camera_id, date=start_date)
+                else:
+                    # Date range - use new method
+                    redlight_stats = stats_db.get_red_light_stats_by_period(camera_id, start_date, end_date)
+                
+                violations = redlight_stats['violation_count'] if redlight_stats and redlight_stats.get('violation_count') is not None else 0
+                
+                detailed_stats.append({
+                    'camera_id': camera_id,
+                    'camera_name': camera['camera_name'],
+                    'camera_type': camera_type,
+                    'total': violations or 0,
+                    'breakdown': {
+                        'red_light_violations': violations or 0
+                    }
+                })
+                total_violations += (violations or 0)
+        
+        # Calculate breakdown by type
+        lane_total = sum(c['total'] for c in detailed_stats if c['camera_type'] == 'lane')
+        helmet_total = sum(c['total'] for c in detailed_stats if c['camera_type'] == 'helmet')
+        redlight_total = sum(c['total'] for c in detailed_stats if c['camera_type'] == 'red_light')
+        
+        return jsonify({
+            'success': True,
+            'period': period,
+            'summary': {
+                'total_violations': total_violations,
+                'lane_violations': lane_total,
+                'helmet_violations': helmet_total,
+                'redlight_violations': redlight_total
+            },
+            'cameras': detailed_stats,
+            'source': 'database'
+        })
+        
+    except Exception as e:
+        print(f"❌ Error getting stats by period: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/stats/<int:camera_id>')
 def get_camera_stats_api(camera_id):
     """Get statistics for specific camera"""
@@ -4495,6 +4865,81 @@ def get_trend_stats_api(period):
                 'period': period,
                 'labels': labels[:len(data)],
                 'data': data[:5]
+            })
+        
+        elif period == 'year':
+            # Get data for current year, grouped by month
+            query = """
+                SELECT 
+                    MONTH(detected_at) as month,
+                    COUNT(*) as count
+                FROM (
+                    SELECT detected_at FROM lane_violations 
+                    WHERE YEAR(detected_at) = YEAR(CURDATE())
+                    UNION ALL
+                    SELECT detected_at FROM helmet_violations 
+                    WHERE YEAR(detected_at) = YEAR(CURDATE())
+                    UNION ALL
+                    SELECT detected_at FROM red_light_violations 
+                    WHERE YEAR(detected_at) = YEAR(CURDATE())
+                ) as all_violations
+                GROUP BY MONTH(detected_at)
+                ORDER BY month
+            """
+            results = stats_db.db.execute_query(query, fetch=True)
+            
+            # Create labels and data for 12 months
+            labels = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12']
+            data = [0] * 12
+            if results:
+                for row in results:
+                    month_idx = row['month'] - 1
+                    if 0 <= month_idx < 12:
+                        data[month_idx] = row['count']
+            
+            return jsonify({
+                'success': True,
+                'period': period,
+                'labels': labels,
+                'data': data
+            })
+        
+        elif period == 'all':
+            # Get data for all time, grouped by year
+            query = """
+                SELECT 
+                    YEAR(detected_at) as year,
+                    COUNT(*) as count
+                FROM (
+                    SELECT detected_at FROM lane_violations
+                    UNION ALL
+                    SELECT detected_at FROM helmet_violations
+                    UNION ALL
+                    SELECT detected_at FROM red_light_violations
+                ) as all_violations
+                GROUP BY YEAR(detected_at)
+                ORDER BY year
+            """
+            results = stats_db.db.execute_query(query, fetch=True)
+            
+            # Create labels and data
+            labels = []
+            data = []
+            if results:
+                for row in results:
+                    labels.append(str(row['year']))
+                    data.append(row['count'])
+            
+            # If no data, return empty
+            if not labels:
+                labels = ['Năm hiện tại']
+                data = [0]
+            
+            return jsonify({
+                'success': True,
+                'period': period,
+                'labels': labels,
+                'data': data
             })
         
         else:
@@ -5312,5 +5757,9 @@ if __name__ == "__main__":
         traceback.print_exc()
     
     print("\n🌐 Starting Flask server...")
-    webbrowser.open('http://127.0.0.1:8000/')
+    # Chỉ mở browser một lần trong process chính (tránh mở 2 tab khi dùng reloader)
+    import os
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        webbrowser.open('http://127.0.0.1:8000/')
     app.run(host="0.0.0.0", port=8000, debug=True, use_reloader=True)
+

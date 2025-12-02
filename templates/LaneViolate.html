@@ -912,6 +912,37 @@
         document.getElementById("loading").style.display = "none";
       }
 
+      // Hàm cập nhật danh sách vi phạm từ database
+      function updateViolationsList(violations) {
+        const violationsList = document.getElementById("violationsList");
+        violationsList.innerHTML = ""; // Xóa danh sách cũ
+
+        violations.forEach((violation) => {
+          const violationItem = document.createElement("div");
+          violationItem.className = "violation-item";
+
+          // Icon dựa trên loại vi phạm
+          const icon = violation.violation_type === "motor_in_car_lane" 
+            ? "fas fa-motorcycle" 
+            : "fas fa-car";
+          const violationTypeText = violation.violation_type_text || "Vi phạm làn đường";
+          const timeFormatted = violation.time_formatted || "N/A";
+          const dateFormatted = violation.date_formatted || "N/A";
+
+          violationItem.innerHTML = `
+            <div class="violation-icon">
+                <i class="${icon}"></i>
+            </div>
+            <div class="violation-info">
+                <div class="violation-type">${violationTypeText}</div>
+                <div class="violation-time">${timeFormatted} - ${dateFormatted}</div>
+            </div>
+          `;
+
+          violationsList.appendChild(violationItem);
+        });
+      }
+
       // Cập nhật thống kê từ database (luôn chạy, không phụ thuộc vào video)
       function updateRealTimeStats() {
         fetch("/lane_detection_status")
@@ -929,6 +960,12 @@
             if (data.runtime_formatted && isDetecting) {
               document.getElementById("runtime").textContent =
                 data.runtime_formatted;
+            }
+
+            // Cập nhật danh sách vi phạm gần đây
+            const recentViolations = data.recent_violations || [];
+            if (recentViolations.length > 0) {
+              updateViolationsList(recentViolations);
             }
 
             // Log để debug (chỉ log nếu có thay đổi)
@@ -979,10 +1016,10 @@
       // Load ngay khi mở trang
       updateRealTimeStats();
 
-      // Kiểm tra database MỖI 2 GIÂY - nếu có vi phạm mới → tự động cập nhật
+      // Kiểm tra database MỖI 3 GIÂY - nếu có vi phạm mới → tự động cập nhật
       setInterval(() => {
         updateRealTimeStats();
-      }, 2000);
+      }, 3000);
     </script>
   </body>
 </html>

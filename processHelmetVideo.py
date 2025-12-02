@@ -44,8 +44,17 @@ def process_helmet_video_complete(input_path, output_path, use_improved_detectio
     print(f"🚀 Starting helmet detection: {input_path}")
     print("⚡ Processing with simple detection - no violation counting...")
     
-    # Load YOLOv8 Custom helmet model v2
-    model = YOLO('model_helmet_v2/best.pt')
+    # Load YOLOv8 Custom helmet model v2 với tham số tối ưu
+    model_path = 'model_helmet_v2/best.pt'
+    if not os.path.exists(model_path):
+        print(f"❌ Error: Model not found at {model_path}")
+        return None, {}
+    
+    print(f"✅ Loading helmet model from: {model_path}")
+    model = YOLO(model_path)
+    
+    # In thông tin model để debug
+    print(f"📊 Model classes: {model.names if hasattr(model, 'names') else 'Unknown'}")
     
     # Initialize EasyOCR for number plate text recognition
     try:
@@ -75,7 +84,8 @@ def process_helmet_video_complete(input_path, output_path, use_improved_detectio
     
     # Simple processing variables
     frame_count = 0
-    name_class = ["with helmet", "without helmet", "rider", "number plate"]
+    # MODEL HELMET V2 CLASSES (THỰC TẾ): 0=head (không mũ), 1=helmet (có mũ), 2=person (người)
+    name_class = model.names if hasattr(model, 'names') else {0: 'head', 1: 'helmet', 2: 'person'}
     pdf_creation_count = 0
     
     # Process each frame
@@ -86,120 +96,33 @@ def process_helmet_video_complete(input_path, output_path, use_improved_detectio
         
         frame_count += 1
         
-        # YOLOv8 Custom helmet detection (every frame for accuracy)
-        results = model(frame)
+        # YOLOv8 Custom helmet detection với tham số tối ưu (giống Colab)
+        # conf: confidence threshold (0.25 theo Colab)
+        # imgsz: image size 800 (theo Colab - model được train với imgsz=800)
+        # classes: chỉ detect class 0 (head) và class 1 (helmet), bỏ class 2 (person)
+        results = model(frame, 
+                       conf=0.25,  # Confidence threshold theo Colab
+                       imgsz=800,  # Image size 800 - GIỐNG COLAB để nhận diện chính xác
+                       classes=[0, 1],  # Chỉ detect class 0 (head) và 1 (helmet), bỏ class 2 (person)
+                       verbose=False)  # Không in log chi tiết
         
         # Variables to store detection results for this frame
         current_license_plate = None
         has_helmet_violation = False
         
-        # Simple detection - just draw bounding boxes
-        for r in results:
-            boxes = r.boxes
-            if boxes is not None:
-                for box in boxes:
+        # SỬ DỤNG PLOT() MẶC ĐỊNH CỦA YOLO GIỐNG COLAB - KHÔNG VẼ THỦ CÔNG
+        # YOLO plot() sẽ tự động vẽ boxes với màu sắc và labels phù hợp
+        if results and len(results) > 0:
+            # Dùng plot() mặc định của YOLO - giống Colab
+            annotated_frame = results[0].plot(conf=True, labels=True, boxes=True)
+            frame = annotated_frame
+            
+            # Kiểm tra vi phạm (class 0 = head = không mũ)
+            if results[0].boxes is not None:
+                for box in results[0].boxes:
                     cls = int(box.cls[0])
-                    conf = float(box.conf[0])
-                    
-                    if conf > 0.5:  # Simple confidence threshold
-                        # Lấy tọa độ và đảm bảo nằm trong frame
-                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                        
-                        # Clamp coordinates to frame boundaries
-                        x1 = max(0, min(x1, width - 1))
-                        y1 = max(0, min(y1, height - 1))
-                        x2 = max(0, min(x2, width - 1))
-                        y2 = max(0, min(y2, height - 1))
-                        
-                        # Draw bounding box based on class
-                        if cls == 1:  # without helmet - VIOLATION (class 1 in new model)
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
-                            label = f"KHONG MU: {conf:.2f}"
-                            # Vẽ background cho text để dễ đọc
-                            (text_width, text_height), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
-                            cv2.rectangle(frame, (x1, y1 - text_height - 10), (x1 + text_width, y1), (0, 0, 255), -1)
-                            cv2.putText(frame, label, (x1, y1-5), 
-                                      cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                            has_helmet_violation = True
-                            
-                        elif cls == 0:  # with helmet detected
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
-                            label = f"CO MU: {conf:.2f}"
-                            # Vẽ background cho text để dễ đọc
-                            (text_width, text_height), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
-                            cv2.rectangle(frame, (x1, y1 - text_height - 10), (x1 + text_width, y1), (0, 255, 0), -1)
-                            cv2.putText(frame, label, (x1, y1-5), 
-                                      cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
-                        elif cls == 2:  # rider detected - BỎ VẼ BOUNDING BOX
-                            pass  # Không vẽ gì cả
-                        elif cls == 3:  # number plate detected
-                            # Luôn vẽ bounding box cho biển số xe (màu tím)
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 3)
-                            
-                            # IMPROVED OCR - Theo notebook model_helmet_v2
-                            plate_text = "BIEN SO"  # Text mặc định
-                            if reader is not None:
-                                try:
-                                    # Crop the number plate region
-                                    plate_crop = frame[y1:y2, x1:x2]
-                                    
-                                    # Kiểm tra crop có hợp lệ
-                                    if plate_crop.size > 0 and plate_crop.shape[0] >= 10 and plate_crop.shape[1] >= 20:
-                                        # Preprocess for better OCR - Cải tiến từ notebook
-                                        # Convert to grayscale
-                                        gray_plate = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2GRAY)
-                                        
-                                        # Apply denoising để giảm nhiễu
-                                        gray_plate = cv2.fastNlMeansDenoising(gray_plate, None, 30, 7, 21)
-                                        
-                                        # Apply adaptive thresholding (tốt hơn binary threshold)
-                                        thresh_plate = cv2.adaptiveThreshold(
-                                            gray_plate, 255, 
-                                            cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                            cv2.THRESH_BINARY, 11, 2
-                                        )
-                                        
-                                        # Apply Gaussian blur để làm mượt
-                                        thresh_plate = cv2.GaussianBlur(thresh_plate, (5, 5), 0)
-                                        
-                                        # Use EasyOCR to extract text
-                                        ocr_results = reader.readtext(thresh_plate)
-                                        
-                                        if ocr_results:
-                                            # Collect all detected texts with confidence > 0.3
-                                            detected_texts = []
-                                            for (bbox, text, prob) in ocr_results:
-                                                if prob > 0.3:
-                                                    # Clean text: remove spaces, uppercase, alphanumeric only
-                                                    cleaned_text = text.strip().replace(" ", "").upper()
-                                                    cleaned_text = ''.join(filter(str.isalnum, cleaned_text))
-                                                    # Lọc text có độ dài hợp lý cho biển số (5-10 ký tự)
-                                                    if len(cleaned_text) >= 5 and len(cleaned_text) <= 10:
-                                                        detected_texts.append((cleaned_text, prob))
-                                            
-                                            # Get the best result (longest text first, then highest confidence)
-                                            if detected_texts:
-                                                detected_texts.sort(key=lambda x: (len(x[0]), x[1]), reverse=True)
-                                                best_text, best_confidence = detected_texts[0]
-                                                
-                                                # Update plate text
-                                                plate_text = best_text
-                                                print(f"🔍 Detected plate: {best_text} (conf: {best_confidence:.2f})")
-                                                
-                                                # Store the detected license plate for this frame
-                                                current_license_plate = best_text
-                                        
-                                except Exception as e:
-                                    # Silent fail - không in lỗi cho mỗi frame
-                                    pass
-                            
-                            # Vẽ text trên bounding box (hoặc "BIEN SO" nếu chưa nhận diện được)
-                            label = f"{plate_text}"
-                            (text_width, text_height), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
-                            cv2.rectangle(frame, (x1, y1 - text_height - 10), (x1 + text_width, y1), (255, 0, 255), -1)
-                            cv2.putText(frame, label, (x1, y1-5), 
-                                      cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                    if cls == 0:  # head (không mũ) - VI PHẠM
+                        has_helmet_violation = True
         
         # Create PDF for violation if helmet violation detected
         if has_helmet_violation:

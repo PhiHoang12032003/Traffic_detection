@@ -296,70 +296,6 @@
         display: none;
       }
 
-      .traffic-light-display {
-        background: #1f2937;
-        border-radius: 15px;
-        padding: 20px;
-        margin-bottom: 20px;
-        text-align: center;
-      }
-
-      .traffic-light {
-        width: 80px;
-        height: 200px;
-        background: #374151;
-        border-radius: 40px;
-        margin: 0 auto 15px;
-        position: relative;
-        border: 3px solid #4b5563;
-      }
-
-      .light {
-        width: 50px;
-        height: 50px;
-        border-radius: 50%;
-        position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
-        border: 2px solid #6b7280;
-      }
-
-      .light.red {
-        top: 20px;
-        background: #374151;
-      }
-
-      .light.red.active {
-        background: #2563eb;
-        box-shadow: 0 0 20px #2563eb;
-      }
-
-      .light.yellow {
-        top: 75px;
-        background: #374151;
-      }
-
-      .light.yellow.active {
-        background: #f59e0b;
-        box-shadow: 0 0 20px #f59e0b;
-      }
-
-      .light.green {
-        top: 130px;
-        background: #374151;
-      }
-
-      .light.green.active {
-        background: #10b981;
-        box-shadow: 0 0 20px #10b981;
-      }
-
-      .light-status {
-        color: white;
-        font-size: 18px;
-        font-weight: 600;
-      }
-
       .sidebar {
         display: flex;
         flex-direction: column;
@@ -592,16 +528,6 @@
               </button>
             </div>
 
-            <!-- Traffic Light Display -->
-            <div class="traffic-light-display">
-              <div class="traffic-light">
-                <div class="light red active" id="redLight"></div>
-                <div class="light yellow" id="yellowLight"></div>
-                <div class="light green" id="greenLight"></div>
-              </div>
-              <div class="light-status" id="lightStatus">ĐÈN ĐỎ</div>
-            </div>
-
             <!-- Alerts -->
             <div class="alert alert-success" id="successAlert">
               <i class="fas fa-check-circle"></i>
@@ -730,8 +656,6 @@
       let isDetecting = false;
       let startTime = null;
       let runtimeInterval = null;
-      let lightInterval = null;
-      let currentLight = "red";
       let violationCount = {
         total: 0,
         motor: 0,
@@ -822,7 +746,6 @@
         document.getElementById("statusIndicator").style.display = "block";
 
         startRuntimeTimer();
-        startTrafficLightSimulation();
         showAlert("success", "Đã bắt đầu giám sát vi phạm đèn đỏ!");
       }
 
@@ -890,7 +813,6 @@
         document.getElementById("statusIndicator").style.display = "none";
 
         stopRuntimeTimer();
-        stopTrafficLightSimulation();
         showAlert("info", "Đã dừng giám sát!");
       }
 
@@ -945,42 +867,6 @@
           clearInterval(runtimeInterval);
           runtimeInterval = null;
         }
-      }
-
-      function startTrafficLightSimulation() {
-        lightInterval = setInterval(() => {
-          if (currentLight === "red") {
-            currentLight = "yellow";
-          } else if (currentLight === "yellow") {
-            currentLight = "green";
-          } else {
-            currentLight = "red";
-          }
-          updateTrafficLight();
-        }, 5000);
-      }
-
-      function stopTrafficLightSimulation() {
-        if (lightInterval) {
-          clearInterval(lightInterval);
-          lightInterval = null;
-        }
-      }
-
-      function updateTrafficLight() {
-        document.getElementById("redLight").classList.remove("active");
-        document.getElementById("yellowLight").classList.remove("active");
-        document.getElementById("greenLight").classList.remove("active");
-
-        document.getElementById(currentLight + "Light").classList.add("active");
-
-        const statusText = {
-          red: "ĐÈN ĐỎ",
-          yellow: "ĐÈN VÀNG",
-          green: "ĐÈN XANH",
-        };
-        document.getElementById("lightStatus").textContent =
-          statusText[currentLight];
       }
 
       function resetStats() {
@@ -1054,7 +940,7 @@
 
           // Icon là ô tô
           const icon = "fas fa-car";
-          const licensePlate = violation.license_plate || "Unknown";
+          const licensePlate = violation.license_plate || "";
           const timeFormatted = violation.time_formatted || "N/A";
           const dateFormatted = violation.date_formatted || "N/A";
 
@@ -1082,8 +968,6 @@
 
       // Load initial stats khi trang load
       updateStatsFromDatabase();
-
-      updateTrafficLight();
     </script>
   </body>
 </html>
