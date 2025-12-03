@@ -288,7 +288,7 @@ def draw_text(img, text, pos=(10, 30), font_scale=0.7, text_color=(255, 255, 255
     # Vẽ chữ lên trên
     cv2.putText(img, text, (x, y + text_h + 3), font, font_scale, text_color, thickness)
 
-
+# Code chính phát hiện vi phạm làn đường
 def video_detection_web(path_x=""):
     """Video detection cho lane violation với xuất kết quả"""
     global lane_detection_active, lane_detection_data, video_db, violation_db
@@ -307,7 +307,7 @@ def video_detection_web(path_x=""):
             print("❌ Không thể mở video")
             return
             
-        model = YOLO('best_new/vehicle.pt')
+        model = YOLO('model_lane/vehicle.pt')
         
         # Get video properties
         original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -1319,7 +1319,7 @@ def generate_frames_helmet(path_x, video_id=None):
         # Optional vehicle model for license plate assist (motorbike focus)
         vehicle_model = None
         try:
-            vehicle_weights = os.path.join('best_new', 'vehicle.pt')
+            vehicle_weights = os.path.join('model_lane', 'vehicle.pt')
             if os.path.exists(vehicle_weights):
                 vehicle_model = YOLO(vehicle_weights)
                 print(f"✅ Vehicle model loaded for plate assist: {vehicle_weights}")
@@ -3838,7 +3838,7 @@ def generate_frames_red_light_advanced(path_x):
             
             # Initialize models như trong processRedLightVideo
             model = YOLO('YoloWeights/yolov8n.pt')
-            vehicle_model = YOLO('best_new/vehicle.pt')
+            vehicle_model = YOLO('model_lane/vehicle.pt')
             
             try:
                 reader = easyocr.Reader(['vi', 'en'])

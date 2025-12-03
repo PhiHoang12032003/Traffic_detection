@@ -22,7 +22,7 @@ def is_infraction(box: list, line: list, scale_factor) -> bool:
 
 
 class FrameProcessor(threading.Thread):
-    def __init__(self, frame_pipeline, processed_pipeline, violating_boxes_pipeline, batch_dim, model_name='plate_detector_model.pt', scale_factor=0.8):
+    def __init__(self, frame_pipeline, processed_pipeline, violating_boxes_pipeline, batch_dim, model_name='model_redlight/plate_detector_model.pt', scale_factor=0.8):
         threading.Thread.__init__(self, daemon=True)
 
         self.model = YOLO(model_name)

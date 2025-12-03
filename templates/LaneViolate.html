@@ -816,6 +816,11 @@
       }
 
       function clearVideo() {
+        // Stop detection if running
+        if (!document.getElementById("stopBtn").disabled) {
+          stopDetection();
+        }
+
         // Call API to delete video file
         fetch("/clear_upload_lane", {
           method: "POST",
@@ -838,7 +843,6 @@
         videoPlaceholder.style.display = "flex";
         uploadSection.style.display = "block";
 
-        stopDetection();
         resetStats();
         hideAllAlerts();
       }
