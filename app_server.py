@@ -146,6 +146,8 @@ helmet_detection_data = {
     'current_with': 0,
     'current_without': 0,
     'current_total': 0,
+    'person_states': {},  # Track trạng thái của từng người: {person_id: {'has_violated': bool, 'last_seen': frame_number, 'last_bbox': bbox}}
+    'next_person_id': 0,  # Counter để tạo person_id mới
     # Use None so generate_frames_helmet() knows to perform DB-initialization
     'frame_count': None
 }
@@ -1426,6 +1428,8 @@ def generate_frames_helmet(path_x, video_id=None):
             helmet_detection_data['temporal_votes'] = {}
             helmet_detection_data['state_map'] = {}
             helmet_detection_data['recent_plates'] = []
+            helmet_detection_data['person_states'] = {}
+            helmet_detection_data['next_person_id'] = 0
             
             print(f"✅ [INIT COMPLETE] Starting counts: With={existing_with_helmet}, Without={existing_without_helmet}, Total violations={len(existing_violations)}")
         
@@ -1470,9 +1474,9 @@ def generate_frames_helmet(path_x, video_id=None):
                 # imgsz: image size 800 (theo Colab - model được train với imgsz=800)
                 # classes: chỉ detect class 0 (head) và class 1 (helmet), bỏ class 2 (person)
                 results = model(frame, 
-                              conf=0.25,  # Confidence threshold theo Colab
+                              conf=0.50,  # ✅ TĂNG từ 0.25 lên 0.50 để giảm false positive khi frame không rõ
                               imgsz=800,  # Image size 800 - GIỐNG COLAB để nhận diện chính xác
-                              classes=[0, 1],  # Chỉ detect class 0 (head) và 1 (helmet), bỏ class 2 (person)
+                              classes=[0, 1],  # Chỉ detect class 0 (helmet) và 1 (head), bỏ class 2 (person)
                               verbose=False)  # Không in log chi tiết
                 
                 # SỬ DỤNG PLOT() MẶC ĐỊNH CỦA YOLO GIỐNG COLAB - KHÔNG VẼ THỦ CÔNG
@@ -1489,11 +1493,11 @@ def generate_frames_helmet(path_x, video_id=None):
                                                if any(f"_frame_{frame_number - i}" in d for i in range(10))}
                     helmet_detection_data['frame_detections'] = current_frame_detections
                     
-                    # Cleanup temporal_votes và state_map - xóa các entry không active > 100 frames
+                    # ✅ TĂNG LÊN 50 GIÂY: Cleanup temporal_votes và state_map - xóa các entry không active > 1500 frames (~50 giây)
                     active_keys = set()
                     for key in list(helmet_detection_data.get('temporal_votes', {}).keys()):
                         mem = helmet_detection_data['temporal_votes'][key]
-                        if frame_number - mem.get('last_frame', 0) > 100:
+                        if frame_number - mem.get('last_frame', 0) > 1500:
                             del helmet_detection_data['temporal_votes'][key]
                         else:
                             active_keys.add(key)
@@ -1501,7 +1505,7 @@ def generate_frames_helmet(path_x, video_id=None):
                     for key in list(helmet_detection_data.get('state_map', {}).keys()):
                         if key not in active_keys:
                             state_rec = helmet_detection_data['state_map'][key]
-                            if frame_number - state_rec.get('last_frame', 0) > 100:
+                            if frame_number - state_rec.get('last_frame', 0) > 1500:
                                 del helmet_detection_data['state_map'][key]
                     
                     print(f"🧹 [FRAME {frame_number}] Cleaned up: temporal_votes={len(helmet_detection_data.get('temporal_votes', {}))}, state_map={len(helmet_detection_data.get('state_map', {}))}")
@@ -1556,31 +1560,37 @@ def generate_frames_helmet(path_x, video_id=None):
                         h = max(0, y2 - y1)
                         area = w * h
                         
-                        # MAPPING THEO CLASS ID THỰC TẾ của model_helmet_v2
+                        # ✅ MAPPING THEO CLASS ID THỰC TẾ của model_helmet_v2
+                        # Model thực tế: {0: 'helmet' (có mũ), 1: 'head' (không mũ - VI PHẠM), 2: 'person'}
+                        # ❌ TRƯỚC ĐÂY SAI: cls==0 → no_helmet, cls==1 → with_helmet
+                        # ✅ BÂY GIỜ ĐÚNG: cls==0 → with_helmet (helmet), cls==1 → no_helmet (head)
                         if cls == 0:
-                            det_type = 'no_helmet'  # head = không mũ = VI PHẠM
+                            det_type = 'with_helmet'  # helmet = có mũ (KHÔNG VI PHẠM)
                         elif cls == 1:
-                            det_type = 'with_helmet'  # helmet = có mũ
+                            det_type = 'no_helmet'  # head = không mũ = VI PHẠM
                         elif cls == 2:
                             det_type = 'person'  # person = người lái
                         else:
                             det_type = 'other'
 
                         # Class-specific confidence and area gates
-                        min_area_head = 1200     # head cần area lớn hơn để tránh false positive
-                        min_area_helmet = 800   # helmet có thể nhỏ hơn
+                        # ✅ TĂNG AREA THRESHOLD: Tăng lên để loại bỏ detection quá nhỏ khi frame không rõ
+                        min_area_head = 2000     # Tăng từ 1200 lên 2000 để tránh false positive
+                        min_area_helmet = 1200   # Tăng từ 800 lên 1200
                         
                         # THÊM: Kiểm tra aspect ratio để loại bỏ detection không hợp lý
                         aspect_ratio = w / h if h > 0 else 0
                         
-                        if det_type == 'no_helmet':  # cls == 0 (head)
-                            # CÂN BẰNG: Giảm threshold để phản ứng nhanh hơn, nhưng vẫn đảm bảo chất lượng
-                            if conf < 0.45 or area < min_area_head:  # Giảm từ 0.55 xuống 0.45
+                        # ✅ SỬA LẠI: cls==0 là helmet (có mũ), cls==1 là head (không mũ)
+                        if det_type == 'no_helmet':  # cls == 1 (head - không mũ - VI PHẠM)
+                            # ✅ TĂNG THRESHOLD: Tăng lên để giảm false positive khi frame không rõ
+                            # Tăng confidence từ 0.45 lên 0.60 để chỉ nhận diện khi chắc chắn
+                            if conf < 0.7 or area < min_area_head:  # Tăng từ 0.45 lên 0.60
                                 continue
                             # Kiểm tra aspect ratio hợp lý cho đầu người (0.5 - 2.0)
                             if aspect_ratio < 0.5 or aspect_ratio > 2.0:
                                 continue
-                        elif det_type == 'with_helmet':  # cls == 1 (helmet)
+                        elif det_type == 'with_helmet':  # cls == 0 (helmet - có mũ)
                             # TĂNG THRESHOLD: Tăng lên để cân bằng với no_helmet
                             if conf < 0.40 or area < min_area_helmet:  # Tăng từ 0.35 lên 0.40
                                 continue
@@ -1642,6 +1652,12 @@ def generate_frames_helmet(path_x, video_id=None):
                         det_type = det['type']
                         x1, y1, x2, y2 = det['bbox']
                         conf = det['conf']
+                        cls = det.get('cls', -1)  # Lấy class ID để kiểm tra chính xác
+                        current_bbox = (x1, y1, x2, y2)
+                        
+                        # ✅ DEBUG: Log để kiểm tra mapping class ID
+                        if frame_number % 30 == 0:  # Log mỗi 30 frames để tránh spam
+                            print(f"🔍 [DEBUG DETECTION] Frame {frame_number}: det_type={det_type}, cls={cls}, conf={conf:.2f}")
 
                         # compute grid and keys
                         center_x = (x1 + x2) // 2
@@ -1651,20 +1667,76 @@ def generate_frames_helmet(path_x, video_id=None):
                         position_key = f"{det_type}_{grid_x}_{grid_y}"
                         frame_detection_key = f"{position_key}_frame_{frame_number}"
 
+                        # ✅ PERSON TRACKING: Match với người đã track (giống vehicle tracking trong lane detection)
+                        person_id = None
+                        if det_type in ('no_helmet', 'with_helmet'):
+                            # Tính IoU với các người đã track
+                            person_states = helmet_detection_data.get('person_states', {})
+                            best_iou = 0.3  # Threshold tối thiểu để match
+                            best_person_id = None
+                            
+                            for pid, pstate in person_states.items():
+                                # ✅ TĂNG LÊN 50 GIÂY: Chỉ match với người đã thấy trong 1500 frames gần nhất (~50 giây với FPS=30)
+                                # Với video 1 phút, đảm bảo cùng 1 người không bị gán ID mới
+                                if frame_number - pstate.get('last_seen', 0) > 1500:
+                                    continue
+                                
+                                last_bbox = pstate.get('last_bbox')
+                                if last_bbox:
+                                    # Tính IoU
+                                    px1, py1, px2, py2 = last_bbox
+                                    inter_x1 = max(x1, px1)
+                                    inter_y1 = max(y1, py1)
+                                    inter_x2 = min(x2, px2)
+                                    inter_y2 = min(y2, py2)
+                                    
+                                    if inter_x2 > inter_x1 and inter_y2 > inter_y1:
+                                        inter_area = (inter_x2 - inter_x1) * (inter_y2 - inter_y1)
+                                        area1 = (x2 - x1) * (y2 - y1)
+                                        area2 = (px2 - px1) * (py2 - py1)
+                                        union_area = area1 + area2 - inter_area
+                                        
+                                        if union_area > 0:
+                                            iou = inter_area / union_area
+                                            if iou > best_iou:
+                                                best_iou = iou
+                                                best_person_id = pid
+                            
+                            # Nếu tìm thấy match, dùng person_id đó
+                            if best_person_id is not None:
+                                person_id = best_person_id
+                                # Update person state
+                                person_state = person_states[person_id]
+                                person_state['last_seen'] = frame_number
+                                person_state['last_bbox'] = current_bbox
+                            else:
+                                # Tạo person_id mới
+                                if 'next_person_id' not in helmet_detection_data:
+                                    helmet_detection_data['next_person_id'] = 0
+                                person_id = f"person_{helmet_detection_data['next_person_id']}"
+                                helmet_detection_data['next_person_id'] += 1
+                                
+                                # Khởi tạo person state
+                                person_states[person_id] = {
+                                    'has_violated': False,
+                                    'last_seen': frame_number,
+                                    'last_bbox': current_bbox,
+                                    'violation_frame': None
+                                }
+                                helmet_detection_data['person_states'] = person_states
+
                         cooldown_frames = 250
                         can_count = True
                         skip_reason = ""
 
-                        # Cooldown check
-                        last_map = helmet_detection_data.get('detection_cooldown', {})
-                        if position_key in last_map:
-                            last_detected_frame = last_map[position_key]
-                            frames_since_last = frame_number - last_detected_frame
-                            if frames_since_last < cooldown_frames:
+                        # ✅ CHECK has_violated FLAG PER PERSON (giống lane violations)
+                        if det_type == 'no_helmet' and person_id is not None:
+                            person_state = helmet_detection_data.get('person_states', {}).get(person_id)
+                            if person_state and person_state.get('has_violated', False):
                                 can_count = False
-                                skip_reason = f"COOLDOWN ({frames_since_last}/{cooldown_frames})"
+                                skip_reason = f"PERSON_ALREADY_VIOLATED (person_id={person_id})"
 
-                        # Per-frame duplicate check
+                        # Per-frame duplicate check (giữ lại để tránh đếm nhiều lần trong cùng frame)
                         if frame_detection_key in helmet_detection_data.get('frame_detections', set()):
                             can_count = False
                             skip_reason = "FRAME_DUP"
@@ -1693,12 +1765,13 @@ def generate_frames_helmet(path_x, video_id=None):
                             with_votes_last3 = sum(1 for v in last3 if v == 'with')
                             with_votes_last4 = sum(1 for v in last4 if v == 'with')
                             if det_type == 'no_helmet':
-                                # GIẢM YÊU CẦU: Chỉ cần >=3 'no' trong last 5 và KHÔNG CÓ 'with' trong last 2 frames
-                                no_votes_last5 = sum(1 for v in wdw[-5:] if v == 'no') if len(wdw) >= 5 else no_votes
-                                with_votes_last2 = sum(1 for v in wdw[-2:] if v == 'with') if len(wdw) >= 2 else 0
-                                if len(wdw) < 3 or no_votes_last5 < 3 or with_votes_last2 > 0:  # Giảm yêu cầu để phản ứng nhanh hơn
+                                # ✅ TĂNG YÊU CẦU: Cần >=5 'no' trong last 7 frames và KHÔNG CÓ 'with' trong last 3 frames
+                                # Tăng yêu cầu để giảm false positive khi frame không rõ
+                                no_votes_last7 = sum(1 for v in wdw[-7:] if v == 'no') if len(wdw) >= 7 else no_votes
+                                with_votes_last3 = sum(1 for v in wdw[-3:] if v == 'with') if len(wdw) >= 3 else 0
+                                if len(wdw) < 7 or no_votes_last7 < 5 or with_votes_last3 > 0:  # Tăng yêu cầu để chắc chắn hơn
                                     can_count = False
-                                    skip_reason = f'VOTE_INSUFFICIENT(no={no_votes_last5}/5, with={with_votes_last2}/2)'
+                                    skip_reason = f'VOTE_INSUFFICIENT(no={no_votes_last7}/7, with={with_votes_last3}/3)'
 
                             # State machine with hysteresis per position
                             state_rec = helmet_detection_data.get('state_map', {}).get(position_key)
@@ -1765,12 +1838,13 @@ def generate_frames_helmet(path_x, video_id=None):
                                 frame_without += 1
                                 counted_keys.add(position_key)
                             
-                            # KIỂM TRA ĐIỀU KIỆN ĐỂ COUNT vi phạm vào database (giảm yêu cầu để phản ứng nhanh hơn)
+                            # ✅ TĂNG YÊU CẦU: Kiểm tra điều kiện để COUNT vi phạm vào database
+                            # Tăng yêu cầu để giảm false positive khi frame không rõ
                             state_ok = helmet_detection_data['state_map'].get(position_key, {}).get('state') == 'no'
-                            # Giảm yêu cầu: chỉ cần 3/5 frames 'no' và 0 'with' trong 2 frames
-                            no_votes_last5 = sum(1 for v in wdw[-5:] if v == 'no') if len(wdw) >= 5 else no_votes
-                            with_votes_last2 = sum(1 for v in wdw[-2:] if v == 'with') if len(wdw) >= 2 else with_votes_last4
-                            votes_ok = (no_votes_last5 >= 3 and with_votes_last2 == 0)  # Giảm yêu cầu
+                            # Tăng yêu cầu: cần >=5 'no' trong last 7 frames và 0 'with' trong last 3 frames
+                            no_votes_last7 = sum(1 for v in wdw[-7:] if v == 'no') if len(wdw) >= 7 else no_votes
+                            with_votes_last3 = sum(1 for v in wdw[-3:] if v == 'with') if len(wdw) >= 3 else with_votes_last4
+                            votes_ok = (no_votes_last7 >= 5 and with_votes_last3 == 0)  # Tăng yêu cầu
                             lock_active = frame_number < helmet_detection_data['state_map'].get(position_key, {}).get('lock_until', -1)
                             
                             # Chỉ COUNT khi đủ điều kiện (nhưng VẪN VẼ bbox ở trên)
@@ -1876,6 +1950,13 @@ def generate_frames_helmet(path_x, video_id=None):
                                         print(f"⚠️ [OCR] F{frame_number} Error: {ocr_err}")
                             
                             if can_count:
+                                # ✅ SET has_violated FLAG PER PERSON (giống lane violations)
+                                if person_id is not None:
+                                    person_state = helmet_detection_data.get('person_states', {}).get(person_id)
+                                    if person_state:
+                                        person_state['has_violated'] = True
+                                        person_state['violation_frame'] = frame_number
+                                
                                 old_count = helmet_detection_data['without_helmet']
                                 helmet_detection_data['without_helmet'] += 1
                                 new_count = helmet_detection_data['without_helmet']
@@ -2014,27 +2095,78 @@ def generate_frames_helmet(path_x, video_id=None):
                                 helmet_detection_data['violations'].append(violation_info)
                                 
                                 # ✅ LƯU VÀO DATABASE (dùng video_id từ parameter, không dùng session)
-                                if violation_db is not None and video_id is not None:
+                                # ✅ CHỈ LƯU ẢNH KHI PHÁT HIỆN "head" (cls == 0, không mũ) - KHÔNG LƯU KHI PHÁT HIỆN "helmet" (cls == 1, có mũ)
+                                # ✅ QUAN TRỌNG: Chỉ lưu khi detection THỰC TẾ là no_helmet (cls == 0), KHÔNG dựa vào state machine
+                                
+                                # ✅ DEBUG: Log chi tiết để kiểm tra
+                                # ✅ QUAN TRỌNG: Model thực tế: cls==0 là helmet (có mũ), cls==1 là head (không mũ - VI PHẠM)
+                                # ✅ Chỉ lưu khi detection THỰC TẾ là no_helmet (cls == 1, head), KHÔNG dựa vào state machine
+                                should_save = (det_type == 'no_helmet' and cls == 1)
+                                
+                                # ✅ DEBUG: Log để kiểm tra
+                                # ✅ QUAN TRỌNG: Log CHI TIẾT để debug khi lưu ảnh
+                                if not should_save:
+                                    if frame_number % 30 == 0:  # Log mỗi 30 frames để tránh spam
+                                        print(f"⏭️ [SKIP SAVE IMAGE] det_type={det_type}, cls={cls} | Chỉ lưu khi det_type='no_helmet' và cls=1 (head). cls=0 là helmet (có mũ)")
+                                else:
+                                    # ✅ LOG CHI TIẾT: Kiểm tra lại cls và det_type trước khi lưu
+                                    print(f"🔍 [BEFORE SAVE CHECK] det_type={det_type}, cls={cls}, conf={conf:.2f}, position_key={position_key}")
+                                    print(f"   → det dictionary: {det}")
+                                    # ✅ KIỂM TRA LẠI: Đảm bảo cls == 1 (head), không phải cls == 0 (helmet)
+                                    # ✅ Model thực tế: cls==0 là helmet (có mũ), cls==1 là head (không mũ)
+                                    if cls != 1:
+                                        print(f"❌ [ERROR] cls={cls} != 1! Không lưu ảnh. Chỉ lưu khi cls=1 (head/no_helmet). cls=0 là helmet (có mũ)")
+                                        should_save = False
+                                    if det_type != 'no_helmet':
+                                        print(f"❌ [ERROR] det_type={det_type} != 'no_helmet'! Không lưu ảnh. Chỉ lưu khi det_type='no_helmet'")
+                                        should_save = False
+                                    if cls == 0:
+                                        print(f"🚨 [ALERT] cls=0 (helmet/có mũ) nhưng det_type={det_type}! TUYỆT ĐỐI KHÔNG được lưu ảnh khi có helmet!")
+                                        should_save = False
+                                
+                                # ✅ KIỂM TRA LẠI: Đảm bảo cls == 1 (head/no_helmet), không phải cls == 0 (helmet/with_helmet)
+                                # ✅ QUAN TRỌNG: Kiểm tra lại cls và det_type để đảm bảo không lưu nhầm khi phát hiện helmet (cls == 0)
+                                # ✅ Model thực tế: cls==0 là helmet (có mũ), cls==1 là head (không mũ)
+                                # ✅ THÊM KIỂM TRA: Không lưu nếu cls == 0 (helmet) hoặc det_type == 'with_helmet'
+                                if violation_db is not None and video_id is not None and should_save and cls == 1 and det_type == 'no_helmet':
                                     try:
                                         fps = helmet_detection_data.get('original_fps', 25.0)
                                         time_in_video = frame_number / fps if fps > 0 else 0
                                         
-                                        # Lưu ảnh vi phạm
+                                        # ✅ KIỂM TRA LẠI LẦN CUỐI: Đảm bảo chỉ lưu khi cls == 1 (head, không mũ)
+                                        # ✅ QUAN TRỌNG: Kiểm tra lại cls và det_type để đảm bảo không lưu nhầm khi phát hiện helmet (cls == 0)
+                                        # ✅ Model thực tế: cls==0 là helmet (có mũ), cls==1 là head (không mũ)
+                                        # ✅ TUYỆT ĐỐI KHÔNG LƯU nếu cls == 0 (helmet) hoặc det_type == 'with_helmet'
+                                        if cls == 0 or det_type == 'with_helmet':
+                                            print(f"🚨 [BLOCK SAVE] cls={cls}, det_type={det_type} | TUYỆT ĐỐI KHÔNG LƯU ảnh khi phát hiện helmet! Chỉ lưu khi cls=1 (head/no_helmet)")
+                                            continue
+                                        if cls != 1 or det_type != 'no_helmet':
+                                            print(f"❌ [ERROR] Attempted to save image but cls={cls}, det_type={det_type}! Chỉ lưu khi cls=1 (head) và det_type='no_helmet'. Skipping save.")
+                                            continue
+                                        
                                         os.makedirs("data_xe_vp_bh", exist_ok=True)
                                         image_path = f"data_xe_vp_bh/helmet_{new_count}.jpg"
                                         cv2.imwrite(image_path, frame)
+                                        print(f"📸 [SAVE IMAGE] ✅ Saved violation image: {image_path} | det_type={det_type}, cls={cls} (head/no_helmet) | Person_ID={person_id}")
                                         
-                                        # Tạo PDF nếu có biển số
+                                        # Tạo PDF biên bản vi phạm mũ bảo hiểm (luôn tạo, không cần biển số)
                                         pdf_path = None
-                                        if lp_text:
-                                            try:
-                                                os.makedirs("BienBanNopPhatXeMayViPhamMuBaoHiem", exist_ok=True)
-                                                pdf_path = f"BienBanNopPhatXeMayViPhamMuBaoHiem/{new_count}.pdf"
-                                                # TODO: Tạo PDF biên bản (cần implement createBB_helmet)
-                                                # from utils.helmet_pdf_utils import create_helmet_pdf_report
-                                                # create_helmet_pdf_report(violation_info, image_path, pdf_path)
-                                            except Exception as pdf_err:
-                                                print(f"⚠️ PDF creation error: {pdf_err}")
+                                        try:
+                                            # Tạo PDF biên bản vi phạm mũ bảo hiểm
+                                            pdf_path = create_helmet_pdf_report(
+                                                frame=frame,
+                                                violation_count=new_count,
+                                                license_plate=lp_text if lp_text else None,
+                                                output_dir="BienBanNopPhatXeMayViPhamMuBaoHiem"
+                                            )
+                                            if lp_text:
+                                                print(f"📄 [PDF CREATED] ✅ Created helmet violation PDF: {pdf_path} (License plate: {lp_text})")
+                                            else:
+                                                print(f"📄 [PDF CREATED] ✅ Created helmet violation PDF: {pdf_path} (No license plate)")
+                                        except Exception as pdf_err:
+                                            print(f"⚠️ PDF creation error: {pdf_err}")
+                                            import traceback
+                                            traceback.print_exc()
                                         
                                         v_id = violation_db.insert_helmet_violation(
                                             video_id=video_id,
@@ -2063,7 +2195,7 @@ def generate_frames_helmet(path_x, video_id=None):
                                         print(f"⚠️ [HELMET DB SKIP] video_id is None")
                                 
                                 cooldown_count = len(helmet_detection_data['detection_cooldown'])
-                                print(f"🚨 [KHÔNG MŨ ➕] {old_count} → {new_count} | F{frame_number} | G({grid_x},{grid_y}) | Cooldowns: {cooldown_count}")
+                                print(f"🚨 [KHÔNG MŨ ➕] {old_count} → {new_count} | F{frame_number} | Person_ID={person_id} | G({grid_x},{grid_y}) | Cooldowns: {cooldown_count}")
                             else:
                                 if frame_number % 30 == 0:
                                     print(f"⏭️ [KHÔNG MŨ SKIP] F{frame_number} | G({grid_x},{grid_y}) | {skip_reason}")
@@ -2178,18 +2310,27 @@ def generate_frames_helmet(path_x, video_id=None):
                     for k in expired_keys:
                         del helmet_detection_data['detection_cooldown'][k]
                     
+                    # ✅ CLEANUP person_states - TĂNG LÊN 50 GIÂY: xóa người không thấy > 1500 frames (~50 giây với FPS=30)
+                    # Với video 1 phút, đảm bảo cùng 1 người không bị xóa và gán ID mới
+                    person_states = helmet_detection_data.get('person_states', {})
+                    expired_persons = [pid for pid, pstate in person_states.items() 
+                                     if frame_number - pstate.get('last_seen', 0) > 1500]
+                    for pid in expired_persons:
+                        del person_states[pid]
+                    
                     active_cooldowns = len(helmet_detection_data.get('detection_cooldown', {}))
-                    print(f"🧹 [HELMET] Frame {frame_number}: Cleaned {len(expired_keys)} cooldowns, {active_cooldowns} active")
+                    active_persons = len(person_states)
+                    print(f"🧹 [HELMET] Frame {frame_number}: Cleaned {len(expired_keys)} cooldowns, {len(expired_persons)} persons | Active: {active_cooldowns} cooldowns, {active_persons} persons")
 
-                    # Cleanup temporal votes too (stale > 200 frames)
+                    # ✅ TĂNG LÊN 50 GIÂY: Cleanup temporal votes too (stale > 1500 frames)
                     tv = helmet_detection_data.get('temporal_votes', {})
-                    stale = [k for k, m in tv.items() if frame_number - (m.get('last_frame', -1)) > 200]
+                    stale = [k for k, m in tv.items() if frame_number - (m.get('last_frame', -1)) > 1500]
                     for k in stale:
                         del tv[k]
 
-                    # Cleanup state_map entries not updated for > 400 frames
+                    # ✅ TĂNG LÊN 50 GIÂY: Cleanup state_map entries not updated for > 1500 frames
                     smap = helmet_detection_data.get('state_map', {})
-                    stale_states = [k for k, m in smap.items() if frame_number - m.get('last_frame', -1) > 400]
+                    stale_states = [k for k, m in smap.items() if frame_number - m.get('last_frame', -1) > 1500]
                     for k in stale_states:
                         del smap[k]
                 
@@ -2359,12 +2500,18 @@ def video_3():
     
     print(f"DEBUG: Starting video stream for {uploaded_video}")
     
+    # Get video_id from session (if database is connected)
+    video_id = session.get('uploaded_video_id', None)
+    print(f"🔍 [STREAMING DEBUG] video_id from session: {video_id}")
+    print(f"🔍 [STREAMING DEBUG] violation_db is None: {violation_db is None}")
+    
     # Check if user wants advanced detection
     use_advanced = session.get('red_light_advanced', False)
     
     if use_advanced:
         # Use advanced streaming with license plate detection
-        return Response(generate_frames_red_light_new(uploaded_video),
+        # Pass video_id and violation_db to save violations immediately
+        return Response(generate_frames_red_light_new(uploaded_video, video_id=video_id, violation_db_instance=violation_db),
                         mimetype='multipart/x-mixed-replace; boundary=frame')
     else:
         # Use basic streaming

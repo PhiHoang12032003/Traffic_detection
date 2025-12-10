@@ -56,7 +56,21 @@ class DatabaseConfig:
     
     def get_connection(self):
         """Get active connection or create new one"""
-        if not self.connection or not self.connection.is_connected():
+        try:
+            if not self.connection:
+                self.connect()
+            else:
+                # Kiểm tra connection với try-except để tránh lỗi khi connection bị mất
+                try:
+                    if not self.connection.is_connected():
+                        self.connect()
+                except Exception:
+                    # Connection bị mất, tạo lại
+                    self.connection = None
+                    self.connect()
+        except Exception as e:
+            print(f"⚠️ Error getting connection: {e}")
+            self.connection = None
             self.connect()
         return self.connection
     
