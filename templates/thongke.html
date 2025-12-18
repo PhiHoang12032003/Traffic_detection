@@ -474,7 +474,10 @@
             Bộ Lọc Thời Gian
           </div>
           <div class="filter-buttons">
-            <button class="filter-btn active" onclick="filterData('today', this)">
+            <button
+              class="filter-btn active"
+              onclick="filterData('today', this)"
+            >
               Hôm Nay
             </button>
             <button class="filter-btn" onclick="filterData('week', this)">
@@ -521,59 +524,6 @@
             </div>
             <div class="stat-number helmet" id="helmetViolations">0</div>
             <div class="stat-label">Không Đội Mũ BH</div>
-          </div>
-        </div>
-
-        <!-- Additional Stats Row -->
-        <div
-          class="stats-overview"
-          style="grid-template-columns: repeat(3, 1fr); margin-bottom: 30px"
-        >
-          <div class="stat-card">
-            <div
-              class="stat-icon"
-              style="
-                background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-              "
-            >
-              <i class="fas fa-traffic-light"></i>
-            </div>
-            <div
-              class="stat-number"
-              style="color: #ef4444"
-              id="redlightViolations"
-            >
-              0
-            </div>
-            <div class="stat-label">Vi Phạm Đèn Đỏ</div>
-          </div>
-          <div class="stat-card">
-            <div
-              class="stat-icon"
-              style="
-                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-              "
-            >
-              <i class="fas fa-percentage"></i>
-            </div>
-            <div class="stat-number" style="color: #10b981" id="complianceRate">
-              0%
-            </div>
-            <div class="stat-label">Tỷ Lệ Tuân Thủ</div>
-          </div>
-          <div class="stat-card">
-            <div
-              class="stat-icon"
-              style="
-                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-              "
-            >
-              <i class="fas fa-chart-line"></i>
-            </div>
-            <div class="stat-number" style="color: #f59e0b" id="avgDaily">
-              0
-            </div>
-            <div class="stat-label">Trung Bình Mỗi Ngày</div>
           </div>
         </div>
 
@@ -755,11 +705,11 @@
         pieChart = new Chart(pieCtx, {
           type: "doughnut",
           data: {
-            labels: ["Làn Đường", "Mũ Bảo Hiểm", "Đèn Đỏ"],
+            labels: ["Làn Đường", "Mũ Bảo Hiểm"],
             datasets: [
               {
-                data: [0, 0, 0],
-                backgroundColor: ["#ff6b6b", "#4facfe", "#ef4444"],
+                data: [0, 0],
+                backgroundColor: ["#ff6b6b", "#4facfe"],
                 borderWidth: 0,
               },
             ],
@@ -811,20 +761,16 @@
         cameraCompareChart = new Chart(cameraCtx, {
           type: "bar",
           data: {
-            labels: [
-              "Camera 1\n(Làn Đường)",
-              "Camera 2\n(Mũ BH)",
-              "Camera 3\n(Đèn Đỏ)",
-            ],
+            labels: ["Camera 1\n(Làn Đường)", "Camera 2\n(Mũ BH)"],
             datasets: [
               {
                 label: "Hôm Nay",
-                data: [0, 0, 0],
+                data: [0, 0],
                 backgroundColor: "rgba(245, 158, 11, 0.8)",
               },
               {
                 label: "Tổng Cộng",
-                data: [0, 0, 0],
+                data: [0, 0],
                 backgroundColor: "rgba(99, 102, 241, 0.8)",
               },
             ],
@@ -1022,15 +968,6 @@
                 fill: true,
                 tension: 0.4,
               },
-              {
-                label: "Đèn Đỏ",
-                data: [],
-                borderColor: "#ef4444",
-                backgroundColor: "rgba(239, 68, 68, 0.1)",
-                borderWidth: 2,
-                fill: true,
-                tension: 0.4,
-              },
             ],
           },
           options: {
@@ -1088,7 +1025,10 @@
           btn.classList.remove("active");
         });
         // Use buttonElement if provided, otherwise try to find the button
-        const targetButton = buttonElement || event?.target || document.querySelector(`.filter-btn[onclick*="${period}"]`);
+        const targetButton =
+          buttonElement ||
+          event?.target ||
+          document.querySelector(`.filter-btn[onclick*="${period}"]`);
         if (targetButton) {
           targetButton.classList.add("active");
         }
@@ -1101,121 +1041,124 @@
       async function loadData(period) {
         try {
           console.log(`📊 Loading data for period: ${period}`);
-          
+
           // Prevent multiple simultaneous loads
           if (isLoadingData) {
             console.log("⏳ Already loading data, waiting...");
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise((resolve) => setTimeout(resolve, 100));
             if (isLoadingData) {
               console.log("⏳ Still loading, skipping duplicate request");
               return;
             }
           }
-          
+
           isLoadingData = true;
-          
+
           // Load overall stats for the period
           const overallResp = await fetch(`/api/stats/overall/${period}`);
           const overallData = await overallResp.json();
-          
+
           console.log(`📊 API Response for ${period}:`, overallData);
-          
+
           if (overallData.success) {
             const summary = overallData.summary || {};
-            
+
             console.log(`📊 Summary data:`, summary);
-            
+
             // Update stats cards - use direct assignment to avoid animation conflicts
             const totalViolations = parseInt(summary.total_violations) || 0;
             const laneViolations = parseInt(summary.lane_violations) || 0;
             const helmetViolations = parseInt(summary.helmet_violations) || 0;
-            const redlightViolations = parseInt(summary.redlight_violations) || 0;
-            
             // Stop any existing animations and update immediately
-            document.getElementById("totalViolations").textContent = totalViolations;
-            document.getElementById("laneViolations").textContent = laneViolations;
-            document.getElementById("helmetViolations").textContent = helmetViolations;
-            document.getElementById("redlightViolations").textContent = redlightViolations;
-            
+            document.getElementById("totalViolations").textContent =
+              totalViolations;
+            document.getElementById("laneViolations").textContent =
+              laneViolations;
+            document.getElementById("helmetViolations").textContent =
+              helmetViolations;
+
             // For "today" period, also update todayViolations
-            if (period === 'today') {
-              document.getElementById("todayViolations").textContent = totalViolations;
+            if (period === "today") {
+              document.getElementById("todayViolations").textContent =
+                totalViolations;
             } else {
               // For other periods, get today's data separately
-              const todayResp = await fetch('/api/stats/overall/today');
+              const todayResp = await fetch("/api/stats/overall/today");
               const todayData = await todayResp.json();
               if (todayData.success) {
-                const todayTotal = parseInt(todayData.summary?.total_violations) || 0;
-                document.getElementById("todayViolations").textContent = todayTotal;
+                const todayTotal =
+                  parseInt(todayData.summary?.total_violations) || 0;
+                document.getElementById("todayViolations").textContent =
+                  todayTotal;
               }
             }
-            
+
             // Update pie chart
             if (pieChart) {
               pieChart.data.datasets[0].data = [
                 parseInt(summary.lane_violations) || 0,
                 parseInt(summary.helmet_violations) || 0,
-                parseInt(summary.redlight_violations) || 0
               ];
               pieChart.update("none");
             }
-            
+
             // Update camera compare chart
             if (cameraCompareChart && overallData.cameras) {
               const cameraData = overallData.cameras;
-              const laneCamera = cameraData.find(c => c.camera_type === 'lane');
-              const helmetCamera = cameraData.find(c => c.camera_type === 'helmet');
-              const redlightCamera = cameraData.find(c => c.camera_type === 'red_light');
-              
+              const laneCamera = cameraData.find(
+                (c) => c.camera_type === "lane"
+              );
+              const helmetCamera = cameraData.find(
+                (c) => c.camera_type === "helmet"
+              );
+
               cameraCompareChart.data.datasets[0].data = [
                 parseInt(laneCamera?.total) || 0,
                 parseInt(helmetCamera?.total) || 0,
-                parseInt(redlightCamera?.total) || 0
               ];
               cameraCompareChart.data.datasets[1].data = [
                 parseInt(summary.lane_violations) || 0,
                 parseInt(summary.helmet_violations) || 0,
-                parseInt(summary.redlight_violations) || 0
               ];
               cameraCompareChart.update("none");
             }
           }
-          
+
           // Load trend data for charts based on period
-          if (period === 'today') {
+          if (period === "today") {
             // For today, load hourly data
             const trendResp = await fetch(`/api/stats/trend/${period}`);
             const trendData = await trendResp.json();
-            
+
             if (trendData.success && trendData.data && hourlyChart) {
               hourlyChart.data.datasets[0].data = trendData.data;
               hourlyChart.update("none");
             }
-          } else if (period === 'week') {
+          } else if (period === "week") {
             // For week, load 7-day trend
-            const weekResp = await fetch('/api/stats/week-trend');
+            const weekResp = await fetch("/api/stats/week-trend");
             const weekData = await weekResp.json();
-            
+
             if (weekData.success && weekData.datasets) {
               // Update simple line chart with total
               if (simpleLineChart) {
                 const totalData = weekData.labels.map(
                   (_, i) =>
                     (weekData.datasets.lane[i] || 0) +
-                    (weekData.datasets.helmet[i] || 0) +
-                    (weekData.datasets.redlight[i] || 0)
+                    (weekData.datasets.helmet[i] || 0)
                 );
                 simpleLineChart.data.labels = weekData.labels || [];
                 simpleLineChart.data.datasets[0].data = totalData;
                 simpleLineChart.update("none");
               }
-              
+
               // Update week trend chart
               if (weekTrendChart) {
                 weekTrendChart.data.labels = weekData.labels || [];
-                weekTrendChart.data.datasets[0].data = weekData.datasets.lane || [];
-                weekTrendChart.data.datasets[1].data = weekData.datasets.helmet || [];
-                weekTrendChart.data.datasets[2].data = weekData.datasets.redlight || [];
+                weekTrendChart.data.datasets[0].data =
+                  weekData.datasets.lane || [];
+                weekTrendChart.data.datasets[1].data =
+                  weekData.datasets.helmet || [];
                 weekTrendChart.update("none");
               }
             }
@@ -1223,28 +1166,29 @@
             // For month, year, all - load trend data
             const trendResp = await fetch(`/api/stats/trend/${period}`);
             const trendData = await trendResp.json();
-            
+
             if (trendData.success && trendData.data && simpleLineChart) {
               simpleLineChart.data.labels = trendData.labels || [];
               simpleLineChart.data.datasets[0].data = trendData.data;
               simpleLineChart.update("none");
             }
-            
+
             // For all period, also load week trend
-            if (period === 'all') {
-              const weekResp = await fetch('/api/stats/week-trend');
+            if (period === "all") {
+              const weekResp = await fetch("/api/stats/week-trend");
               const weekData = await weekResp.json();
-              
+
               if (weekData.success && weekData.datasets && weekTrendChart) {
                 weekTrendChart.data.labels = weekData.labels || [];
-                weekTrendChart.data.datasets[0].data = weekData.datasets.lane || [];
-                weekTrendChart.data.datasets[1].data = weekData.datasets.helmet || [];
-                weekTrendChart.data.datasets[2].data = weekData.datasets.redlight || [];
+                weekTrendChart.data.datasets[0].data =
+                  weekData.datasets.lane || [];
+                weekTrendChart.data.datasets[1].data =
+                  weekData.datasets.helmet || [];
                 weekTrendChart.update("none");
               }
             }
           }
-          
+
           console.log(`✅ Data loaded successfully for period: ${period}`);
         } catch (error) {
           console.error(`❌ Error loading data for period ${period}:`, error);
@@ -1253,7 +1197,6 @@
           document.getElementById("todayViolations").textContent = "0";
           document.getElementById("laneViolations").textContent = "0";
           document.getElementById("helmetViolations").textContent = "0";
-          document.getElementById("redlightViolations").textContent = "0";
         } finally {
           isLoadingData = false;
         }
@@ -1396,15 +1339,12 @@
             // Calculate breakdown by camera type
             let laneViolations = 0;
             let helmetViolations = 0;
-            let redlightViolations = 0;
 
             apiData.cameras.forEach((camera) => {
               if (camera.camera_type === "lane") {
                 laneViolations += camera.total_all_time || 0;
               } else if (camera.camera_type === "helmet") {
                 helmetViolations += camera.total_all_time || 0;
-              } else if (camera.camera_type === "red_light") {
-                redlightViolations += camera.total_all_time || 0;
               }
             });
 
@@ -1413,29 +1353,12 @@
             animateNumber("todayViolations", parseInt(todayViolations) || 0);
             animateNumber("laneViolations", parseInt(laneViolations) || 0);
             animateNumber("helmetViolations", parseInt(helmetViolations) || 0);
-            animateNumber(
-              "redlightViolations",
-              parseInt(redlightViolations) || 0
-            );
-
-            // Calculate and display compliance rate (assuming 70% compliance)
-            const complianceRate =
-              totalViolations > 0
-                ? Math.max(0, 100 - todayViolations * 10)
-                : 95;
-            document.getElementById("complianceRate").textContent =
-              Math.round(complianceRate) + "%";
-
-            // Calculate average daily violations (last 7 days)
-            const avgDaily = Math.round(totalViolations / 7);
-            animateNumber("avgDaily", avgDaily);
 
             console.log("✅ Statistics loaded successfully:", {
               total: totalViolations,
               today: todayViolations,
               lane: laneViolations,
               helmet: helmetViolations,
-              redlight: redlightViolations,
             });
 
             // Update pie chart with real data
@@ -1443,7 +1366,6 @@
               pieChart.data.datasets[0].data = [
                 laneViolations,
                 helmetViolations,
-                redlightViolations,
               ];
               pieChart.update("none"); // No animation to prevent loop
             }
@@ -1466,7 +1388,6 @@
           document.getElementById("todayViolations").textContent = "0";
           document.getElementById("laneViolations").textContent = "0";
           document.getElementById("helmetViolations").textContent = "0";
-          document.getElementById("redlightViolations").textContent = "0";
         } finally {
           isLoadingData = false;
         }
@@ -1527,7 +1448,6 @@
               weekTrendChart.data.labels = weekData.labels;
               weekTrendChart.data.datasets[0].data = weekData.datasets.lane;
               weekTrendChart.data.datasets[1].data = weekData.datasets.helmet;
-              weekTrendChart.data.datasets[2].data = weekData.datasets.redlight;
               weekTrendChart.update("none");
             }
 
@@ -1536,8 +1456,7 @@
               const totalData = weekData.labels.map(
                 (_, i) =>
                   (weekData.datasets.lane[i] || 0) +
-                  (weekData.datasets.helmet[i] || 0) +
-                  (weekData.datasets.redlight[i] || 0)
+                  (weekData.datasets.helmet[i] || 0)
               );
               simpleLineChart.data.labels = weekData.labels;
               simpleLineChart.data.datasets[0].data = totalData;
@@ -1578,7 +1497,7 @@
         initCharts();
         console.log("📊 Charts initialized, loading data...");
         // Load initial data with default filter (today)
-        loadData('today').then(() => {
+        loadData("today").then(() => {
           initComplete = true;
           window.scrollTo = originalScroll;
           window.scrollTo(0, 0); // Reset to top

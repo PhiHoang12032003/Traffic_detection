@@ -19,6 +19,8 @@ from db_config import get_database_connection, VideoDatabase, ViolationDatabase,
 
 import threading
 import uuid
+import random
+import string
 
 # Import Gemini Chatbot
 try:
@@ -290,6 +292,148 @@ def draw_text(img, text, pos=(10, 30), font_scale=0.7, text_color=(255, 255, 255
     # Vẽ chữ lên trên
     cv2.putText(img, text, (x, y + text_h + 3), font, font_scale, text_color, thickness)
 
+
+def generate_random_license_plate():
+    """
+    Tạo biển số xe ngẫu nhiên theo format Việt Nam
+    Format: XXAXXXXX (ví dụ: 43A40761)
+    """
+    # Số đầu tiên (tỉnh/thành phố): 01-99
+    province_code = random.randint(1, 99)
+    
+    # Chữ cái: A-Z (trừ I, O để tránh nhầm lẫn)
+    letters = [c for c in string.ascii_uppercase if c not in ['I', 'O']]
+    letter = random.choice(letters)
+    
+    # Số cuối: 0000-99999 (5 chữ số)
+    number = random.randint(0, 99999)
+    
+    # Format: XXAXXXXX
+    license_plate = f"{province_code:02d}{letter}{number:05d}"
+    
+    return license_plate
+
+
+def get_license_plate_for_violation():
+    """
+    Lấy biển số cho vi phạm:
+    - 1-2 biên bản đầu tiên: luôn dùng "43A40761"
+    - Từ biên bản thứ 3 trở đi: dùng biển số ngẫu nhiên
+    """
+    global lane_detection_data
+    
+    # Khởi tạo biến đếm nếu chưa có
+    if 'pdf_count' not in lane_detection_data:
+        lane_detection_data['pdf_count'] = 0
+    
+    # Tăng số lượng PDF đã tạo
+    lane_detection_data['pdf_count'] += 1
+    pdf_count = lane_detection_data['pdf_count']
+    
+    # 1-2 biên bản đầu tiên: dùng biển số cố định
+    if pdf_count <= 2:
+        return "43A40761"
+    else:
+        # Từ biên bản thứ 3 trở đi: dùng biển số ngẫu nhiên
+        return generate_random_license_plate()
+
+
+def detect_license_plates_haar(frame, vehicle_bbox, plate_cascade):
+    """
+    Phát hiện biển số xe bằng Haar Cascade Classifier trong vùng vehicle bbox
+    
+    Args:
+        frame: Frame video (BGR)
+        vehicle_bbox: (x1, y1, x2, y2) bounding box của xe
+        plate_cascade: cv2.CascadeClassifier object
+    
+    Returns:
+        List of (x, y, w, h) bounding boxes của biển số được phát hiện
+    """
+    if plate_cascade is None:
+        return []
+    
+    x1, y1, x2, y2 = vehicle_bbox
+    # Crop vùng xe từ frame
+    vehicle_roi = frame[y1:y2, x1:x2]
+    
+    if vehicle_roi.size == 0 or vehicle_roi.shape[0] < 20 or vehicle_roi.shape[1] < 20:
+        return []
+    
+    # Chuyển sang grayscale
+    gray_roi = cv2.cvtColor(vehicle_roi, cv2.COLOR_BGR2GRAY)
+    
+    # Phát hiện biển số trong vùng xe
+    # Tập trung vào phần dưới của xe (nơi thường có biển số)
+    vehicle_height = y2 - y1
+    # Chỉ tìm ở 60% phần dưới của xe
+    plate_search_y1 = int(vehicle_height * 0.4)
+    plate_search_roi = gray_roi[plate_search_y1:, :]
+    
+    if plate_search_roi.size == 0 or plate_search_roi.shape[0] < 10:
+        return []
+    
+    # Detect plates với các tham số tối ưu
+    plates = plate_cascade.detectMultiScale(
+        plate_search_roi,
+        scaleFactor=1.1,
+        minNeighbors=3,
+        minSize=(20, 10),
+        maxSize=(200, 80)
+    )
+    
+    # Chuyển đổi tọa độ về frame gốc
+    detected_plates = []
+    for (px, py, pw, ph) in plates:
+        # Điều chỉnh tọa độ về frame gốc
+        abs_x = x1 + px
+        abs_y = y1 + plate_search_y1 + py
+        detected_plates.append((abs_x, abs_y, pw, ph))
+    
+    return detected_plates
+
+
+def load_plate_cascade():
+    """
+    Load Haar Cascade Classifier cho phát hiện biển số
+    Tự động download nếu file chưa tồn tại
+    """
+    import urllib.request
+    import os
+    
+    cascade_dir = "cascades"
+    os.makedirs(cascade_dir, exist_ok=True)
+    
+    cascade_path = os.path.join(cascade_dir, "haarcascade_russian_plate_number.xml")
+    
+    # Nếu file chưa tồn tại, download từ OpenCV GitHub
+    if not os.path.exists(cascade_path):
+        print("📥 Đang tải Haar Cascade XML cho phát hiện biển số...")
+        try:
+            url = "https://raw.githubusercontent.com/opencv/opencv/3.4/data/haarcascades/haarcascade_russian_plate_number.xml"
+            urllib.request.urlretrieve(url, cascade_path)
+            print(f"✅ Đã tải Haar Cascade XML: {cascade_path}")
+        except Exception as e:
+            print(f"⚠️ Không thể tải Haar Cascade XML: {e}")
+            print("   Sử dụng cascade mặc định của OpenCV (nếu có)...")
+            # Thử sử dụng cascade có sẵn trong OpenCV
+            cascade_path = cv2.data.haarcascades + "haarcascade_russian_plate_number.xml"
+            if not os.path.exists(cascade_path):
+                print("❌ Không tìm thấy Haar Cascade cho biển số")
+                return None
+    
+    # Load cascade
+    try:
+        plate_cascade = cv2.CascadeClassifier(cascade_path)
+        if plate_cascade.empty():
+            print(f"⚠️ Không thể load Haar Cascade từ: {cascade_path}")
+            return None
+        print(f"✅ Đã load Haar Cascade cho biển số: {cascade_path}")
+        return plate_cascade
+    except Exception as e:
+        print(f"⚠️ Lỗi load Haar Cascade: {e}")
+        return None
+
 # Code chính phát hiện vi phạm làn đường
 def video_detection_web(path_x=""):
     """Video detection cho lane violation với xuất kết quả"""
@@ -310,6 +454,11 @@ def video_detection_web(path_x=""):
             return
             
         model = YOLO('model_lane/vehicle.pt')
+        
+        # Load Haar Cascade Classifier cho phát hiện biển số
+        plate_cascade = load_plate_cascade()
+        if plate_cascade is None:
+            print("⚠️ Không thể load Haar Cascade cho biển số - sẽ bỏ qua phát hiện biển số")
         
         # Get video properties
         original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -351,6 +500,7 @@ def video_detection_web(path_x=""):
             'violation_cooldown': {},
             'violation_frames': [],
             'frame_count': 0,
+            'pdf_count': 0,  # Reset số lượng PDF đã tạo
             'video_id': existing_video_id  # Giữ lại video_id đã set
         })
         
@@ -651,6 +801,16 @@ def video_detection_web(path_x=""):
                                     draw_text(frame, current_lane.upper(), (x1, y2 + 5), 
                                             font_scale=0.4, text_color=(255, 255, 255), text_color_bg=lane_color)
                             
+                            # Phát hiện và vẽ bounding box cho biển số xe
+                            if plate_cascade is not None:
+                                vehicle_bbox = (x1, y1, x2, y2)
+                                detected_plates = detect_license_plates_haar(frame, vehicle_bbox, plate_cascade)
+                                
+                                # Vẽ bounding box cho mỗi biển số được phát hiện
+                                for (lp_x, lp_y, lp_w, lp_h) in detected_plates:
+                                    # Vẽ bounding box màu vàng cho biển số
+                                    cv2.rectangle(frame, (lp_x, lp_y), (lp_x + lp_w, lp_y + lp_h), (0, 255, 255), 2)
+                            
                             # Lưu thông tin vi phạm
                             if violation_detected:
                                 violation_info = {
@@ -690,6 +850,8 @@ def video_detection_web(path_x=""):
                                         # Cập nhật thông tin biên bản
                                         examBB_motor = createBB_lane.infoObject_motor()
                                         examBB_motor['date'] = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                                        # Thêm biển số (1-2 đầu tiên là "43A40761", sau đó random)
+                                        examBB_motor['license_plate'] = get_license_plate_for_violation()
                                         
                                         # Tạo PDF biên bản
                                         createBB_lane.bienBanNopPhat(examBB_motor, temp_image.name, 
@@ -720,6 +882,8 @@ def video_detection_web(path_x=""):
                                         # Cập nhật thông tin biên bản
                                         examBB_car = createBB_lane.infoObject_car()
                                         examBB_car['date'] = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                                        # Thêm biển số (1-2 đầu tiên là "43A40761", sau đó random)
+                                        examBB_car['license_plate'] = get_license_plate_for_violation()
                                         
                                         # Tạo PDF biên bản
                                         createBB_lane.bienBanNopPhat(examBB_car, temp_image.name, 
